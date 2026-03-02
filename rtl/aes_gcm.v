@@ -10,22 +10,22 @@ module aes_operation #(
 
     localparam Nr = (MODE == 192) ? 12 : (MODE == 256) ? 14 : 10;
 
-    localparam S_IDLE       = 2'b00;
-    localparam S_INIT       = 2'b01;
-    localparam S_CALC       = 2'b10;
-    localparam S_DONE       = 2'b11;
+    localparam S_IDLE = 1'b0;
+    localparam S_CALC = 1'b1;
 
-    reg [1:0]   state;
-    reg [3:0]   round_ctr;
-    reg [127:0] state_reg, current_data_in;
+    reg state;
+    reg [3:0] round_ctr;
+    reg [127:0] state_reg;
     reg [MODE-1:0] full_key_reg;
 
     wire [3:0] rcon_step = round_ctr;
     wire [MODE-1:0] next_key_gen;
-    wire [127:0]    round_out;
+    wire [127:0] round_out;
+
+    wire [MODE-1:0] active_key = (state == S_IDLE) ? key : full_key_reg;
 
     key_expansion_otf #(MODE) key_gen_unit (
-        .key_in(full_key_reg),
+        .key_in(active_key),
         .round_step(rcon_step),
         .key_out(next_key_gen)
     );
@@ -40,42 +40,34 @@ module aes_operation #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= S_IDLE;
-			round_ctr <= 4'd0;
-			data_out <= 4'd0;
+            round_ctr <= 4'd0;
+            data_out <= 128'd0;
             valid_out <= 1'b0;
+            state_reg <= 128'd0;
+            full_key_reg <= {MODE{1'b0}};
         end else begin
             case (state)
                 S_IDLE: begin
                     valid_out <= 1'b0;
-					round_ctr <= 4'd0;
-					data_out <= 4'd0;
+                    round_ctr <= 4'd0;
                     if (valid_in) begin
-                        current_data_in <= data_in;
-                        full_key_reg <= key;
-                        state <= S_INIT;
+                        state_reg <= data_in ^ key[MODE-1 -: 128];
+                        full_key_reg <= next_key_gen;
+                        round_ctr <= 4'd1;
+                        state <= S_CALC;
                     end
-                end
-
-                S_INIT: begin
-                    state_reg <= current_data_in ^ (full_key_reg[MODE-1 -: 128]);
-                    full_key_reg <= next_key_gen;
-                    round_ctr <= round_ctr + 1'b1;
-                    state <= S_CALC;
                 end
 
                 S_CALC: begin
-                    state_reg <= round_out;
-                    if (round_ctr == Nr) state <= S_DONE;
-                    else begin
-                        round_ctr <= round_ctr + 1'b1;
+                    if (round_ctr == Nr) begin
+                        data_out <= round_out;
+                        valid_out <= 1'b1;
+                        state <= S_IDLE;
+                    end else begin
+                        state_reg <= round_out;
                         full_key_reg <= next_key_gen;
+                        round_ctr <= round_ctr + 1'b1;
                     end
-                end
-
-                S_DONE: begin
-                    data_out <= state_reg;
-                    valid_out <= 1'b1;
-                    state <= S_IDLE;
                 end
             endcase
         end
@@ -83,10 +75,9 @@ module aes_operation #(
 endmodule
 
 module aes_round (
-    input  [127:0] data_in,
-    input  [127:0] round_key_in,
+    input  [127:0] data_in, round_key_in,
     input  is_last_round,
-    output wire [127:0] data_out
+    output [127:0] data_out
 );
 
     wire [127:0] sbox_out, shift_out, mix_out;
@@ -341,8 +332,7 @@ module multiplicative_inversion_core (
 endmodule
 
 module gf4_multiplier (
-    input  [3:0] q,
-    input  [3:0] a,
+    input  [3:0] q, a,
     output [3:0] k
 );
     wire [1:0] qh = q[3:2], ql = q[1:0];
@@ -362,8 +352,7 @@ module gf4_multiplier (
 endmodule
 
 module gf2_multiplier (
-    input  [1:0] q,
-    input  [1:0] a,
+    input  [1:0] q, a,
     output [1:0] k
 );
     assign k[1] = (q[1] & a[1]) ^ (q[0] & a[1]) ^ (q[1] & a[0]);
