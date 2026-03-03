@@ -9,7 +9,6 @@ module aes_operation #(
 );
 
     localparam Nr = (MODE == 192) ? 12 : (MODE == 256) ? 14 : 10;
-
     localparam S_IDLE = 1'b0;
     localparam S_CALC = 1'b1;
 
@@ -18,10 +17,12 @@ module aes_operation #(
     reg [127:0] state_reg;
     reg [MODE-1:0] full_key_reg;
 
+    wire update_regs = (state == S_IDLE && valid_in) || (state == S_CALC);
+    wire update_output = (state == S_CALC && round_ctr == Nr);
+
     wire [3:0] rcon_step = round_ctr;
     wire [MODE-1:0] next_key_gen;
     wire [127:0] round_out;
-
     wire [MODE-1:0] active_key = (state == S_IDLE) ? key : full_key_reg;
 
     key_expansion_otf #(MODE) key_gen_unit (
@@ -41,37 +42,51 @@ module aes_operation #(
         if (!rst_n) begin
             state <= S_IDLE;
             round_ctr <= 4'd0;
-            data_out <= 128'd0;
             valid_out <= 1'b0;
-            state_reg <= 128'd0;
-            full_key_reg <= {MODE{1'b0}};
         end else begin
             case (state)
                 S_IDLE: begin
                     valid_out <= 1'b0;
-                    round_ctr <= 4'd0;
                     if (valid_in) begin
-                        state_reg <= data_in ^ key[MODE-1 -: 128];
-                        full_key_reg <= next_key_gen;
-                        round_ctr <= 4'd1;
                         state <= S_CALC;
+                        round_ctr <= 4'd1;
                     end
                 end
-
                 S_CALC: begin
                     if (round_ctr == Nr) begin
-                        data_out <= round_out;
-                        valid_out <= 1'b1;
                         state <= S_IDLE;
+                        valid_out <= 1'b1;
                     end else begin
-                        state_reg <= round_out;
-                        full_key_reg <= next_key_gen;
                         round_ctr <= round_ctr + 1'b1;
                     end
                 end
             endcase
         end
     end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state_reg <= 128'd0;
+            full_key_reg <= {MODE{1'b0}};
+        end else if (update_regs) begin
+            if (state == S_IDLE) begin
+                state_reg <= data_in ^ key[MODE-1 -: 128];
+                full_key_reg <= next_key_gen;
+            end else begin
+                state_reg <= round_out;
+                full_key_reg <= next_key_gen;
+            end
+        end
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            data_out <= 128'd0;
+        end else if (update_output) begin
+            data_out <= round_out;
+        end
+    end
+
 endmodule
 
 module aes_round (
