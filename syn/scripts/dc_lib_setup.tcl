@@ -34,3 +34,6 @@ set_tlu_plus_files -max_tluplus $TLUPLUS_MAX_FILE \
       -min_tluplus $TLUPLUS_MIN_FILE \
       -tech2itf_map $MAP_FILE
 check_tlu_plus_files
+
+define_design_lib WORK -path ./work
+set_app_var sh_command_log_file ./logs/command.log
