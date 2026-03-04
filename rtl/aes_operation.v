@@ -1,14 +1,35 @@
 module aes_operation #(
-    parameter MODE = 128
+    `ifdef AES_256
+        parameter MODE = 256
+    `elsif AES_192
+        parameter MODE = 192
+    `else // Default to AES_128
+        parameter MODE = 128
+    `endif
 ) (
     input clk, rst_n, valid_in,
-    input [MODE-1:0] key,
+    
+    `ifdef AES_256
+        input [255:0] key,
+    `elsif AES_192
+        input [191:0] key,
+    `else // Default to AES_128
+        input [127:0] key,
+    `endif
+
     input [127:0] data_in,
     output reg valid_out,
     output reg [127:0] data_out
 );
 
-    localparam Nr = (MODE == 192) ? 12 : (MODE == 256) ? 14 : 10;
+    `ifdef AES_256
+        localparam Nr = 14;
+    `elsif AES_192
+        localparam Nr = 12;
+    `else // Default to AES_128
+        localparam Nr = 10;
+    `endif
+
     localparam S_IDLE = 1'b0;
     localparam S_CALC = 1'b1;
 
@@ -185,18 +206,43 @@ module aes_mix_columns (
 endmodule
 
 module key_expansion_otf #(
-    parameter MODE = 128
-)(
-    input  [MODE-1:0] key_in,
-    input  [3:0]      round_step,
-    output [MODE-1:0] key_out
+    `ifdef AES_256
+        parameter MODE = 256
+    `elsif AES_192
+        parameter MODE = 192
+    `else // Default to AES_128
+        parameter MODE = 128
+    `endif
+) (
+    input [3:0] round_step,
+
+    `ifdef AES_256
+        input [255:0] key_in,
+        output [255:0] key_out
+    `elsif AES_192
+        input [191:0] key_in,
+        output [191:0] key_out
+    `else
+        input [127:0] key_in,
+        output [127:0] key_out
+    `endif
 );
-    localparam Nk = MODE / 32;
+
+    `ifdef AES_256
+        localparam Nk = 8;
+    `elsif AES_192
+        localparam Nk = 6;
+    `else
+        localparam Nk = 4;
+    `endif
+
     wire [31:0] w [0:Nk-1];
     
     genvar i;
     generate
-        for (i = 0; i < Nk; i = i + 1) assign w[i] = key_in[MODE-1 - i*32 -: 32];
+        for (i = 0; i < Nk; i = i + 1) begin : KEY_SUBWORD
+            assign w[i] = key_in[MODE-1 - i*32 -: 32];
+        end
     endgenerate
 
     function [31:0] rcon_val(input [3:0] r);
@@ -222,29 +268,36 @@ module key_expansion_otf #(
     wire [31:0] g_func = sub_rot_w ^ rcon_val(round_step);
 
     wire [31:0] sub_mid_w;
-    generate
-        if (MODE == 256) begin : AES_256_SUBWORD
-            wire [31:0] mid_in = w[3];
-            aes_sbox sm0 (.in(mid_in[31:24]), .out(sub_mid_w[31:24]));
-            aes_sbox sm1 (.in(mid_in[23:16]), .out(sub_mid_w[23:16]));
-            aes_sbox sm2 (.in(mid_in[15:8]),  .out(sub_mid_w[15:8]));
-            aes_sbox sm3 (.in(mid_in[7:0]),   .out(sub_mid_w[7:0]));
-        end else assign sub_mid_w = 32'd0;
-    endgenerate
+    `ifdef AES_256
+        wire [31:0] mid_in = w[3];
+        aes_sbox sm0 (.in(mid_in[31:24]), .out(sub_mid_w[31:24]));
+        aes_sbox sm1 (.in(mid_in[23:16]), .out(sub_mid_w[23:16]));
+        aes_sbox sm2 (.in(mid_in[15:8]),  .out(sub_mid_w[15:8]));
+        aes_sbox sm3 (.in(mid_in[7:0]),   .out(sub_mid_w[7:0]));
+    `else
+        assign sub_mid_w = 32'd0;
+    `endif
 
     wire [31:0] next_w [0:Nk-1];
     assign next_w[0] = w[0] ^ g_func;
 
     generate
         for (i = 1; i < Nk; i = i + 1) begin : WORD_GEN
-            wire [31:0] trans_w = (MODE == 256 && i == 4) ? sub_mid_w : next_w[i-1];
+            wire [31:0] trans_w;
+            `ifdef AES_256
+                assign trans_w = (i == 4) ? sub_mid_w : next_w[i-1];
+            `else
+                assign trans_w = next_w[i-1];
+            `endif
             assign next_w[i] = w[i] ^ trans_w;
         end
     endgenerate
 
-    for (i = 0; i < Nk; i = i + 1) begin : REPACK
-        assign key_out[MODE-1 - i*32 -: 32] = next_w[i];
-    end
+    generate
+        for (i = 0; i < Nk; i = i + 1) begin : REPACK
+            assign key_out[MODE-1 - i*32 -: 32] = next_w[i];
+        end
+    endgenerate
 endmodule
 
 module aes_sbox (

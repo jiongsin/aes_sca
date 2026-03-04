@@ -4,7 +4,7 @@ source ./scripts/dc_lib_setup.tcl
 # 1. SETUP & READ
 # =====================================================================
 set rtl_files { 
-    aes_gcm.v
+    aes_operation.v
 }
 
 # Define Variables
