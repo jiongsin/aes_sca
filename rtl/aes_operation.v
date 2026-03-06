@@ -18,8 +18,8 @@ module aes_operation #(
     `endif
 
     input [127:0] data_in,
-    output reg valid_out,
-    output reg [127:0] data_out
+    output valid_out,
+    output [127:0] data_out
 );
 
     `ifdef AES_256
@@ -33,57 +33,78 @@ module aes_operation #(
     localparam S_IDLE = 1'b0;
     localparam S_CALC = 1'b1;
 
-    reg state;
-    reg [3:0] round_ctr;
+    reg state, next_state, next_valid_out;
+    reg [3:0] round_ctr, next_round_ctr;
     reg [127:0] state_reg;
     reg [MODE-1:0] full_key_reg;
 
     wire update_regs = (state == S_IDLE && valid_in) || (state == S_CALC);
-    wire update_output = (state == S_CALC && round_ctr == Nr);
-
+    
     wire [3:0] rcon_step = round_ctr;
     wire [MODE-1:0] next_key_gen;
     wire [127:0] round_out;
-    wire [MODE-1:0] active_key = (state == S_IDLE) ? key : full_key_reg;
+    wire [MODE-1:0] active_key = (state == S_IDLE && valid_in) ? key : full_key_reg;
+    
+    wire [MODE-1:0] gated_active_key = (state == S_CALC || valid_in) ? active_key : {MODE{1'b0}}; 
+    wire [127:0] gated_state_reg = (state == S_CALC) ? state_reg : 128'd0;
 
     key_expansion_otf #(MODE) key_gen_unit (
-        .key_in(active_key),
+        .key_in(gated_active_key),
         .round_step(rcon_step),
         .key_out(next_key_gen)
     );
 
     aes_round u_round (
-        .data_in(state_reg),
+        .data_in(gated_state_reg),
         .round_key_in(full_key_reg[MODE-1 -: 128]),
         .is_last_round(round_ctr == Nr),
         .data_out(round_out)
     );
 
+    always @(*) begin
+        case (state)
+            S_IDLE: begin
+                if (valid_in) begin
+                    next_state = S_CALC;
+                    next_round_ctr = 4'd1;
+                    next_valid_out = 1'b0;
+                end else begin
+                    next_state = S_IDLE;
+                    next_round_ctr = 4'd0;
+                    next_valid_out = 1'b0;
+                end
+            end
+            S_CALC: begin
+                if (round_ctr == Nr) begin
+                    next_state = S_IDLE;
+                    next_round_ctr = 4'd0;
+                    next_valid_out = 1'b1; // Pulse high when calculation ends
+                end else begin
+                    next_state = S_CALC;
+                    next_round_ctr = round_ctr + 1'b1;
+                    next_valid_out = 1'b0;
+                end
+            end
+            default: begin
+                next_state = S_IDLE;
+                next_round_ctr = 4'd0;
+                next_valid_out = 1'b0;
+            end
+        endcase
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= S_IDLE;
             round_ctr <= 4'd0;
-            valid_out <= 1'b0;
         end else begin
-            case (state)
-                S_IDLE: begin
-                    valid_out <= 1'b0;
-                    if (valid_in) begin
-                        state <= S_CALC;
-                        round_ctr <= 4'd1;
-                    end
-                end
-                S_CALC: begin
-                    if (round_ctr == Nr) begin
-                        state <= S_IDLE;
-                        valid_out <= 1'b1;
-                    end else begin
-                        round_ctr <= round_ctr + 1'b1;
-                    end
-                end
-            endcase
+            state <= next_state;
+            round_ctr <= next_round_ctr;
         end
     end
+
+    // Direct assignment for 1-cycle pulse
+    assign valid_out = next_valid_out;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -100,13 +121,8 @@ module aes_operation #(
         end
     end
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            data_out <= 128'd0;
-        end else if (update_output) begin
-            data_out <= round_out;
-        end
-    end
+    // Final result output: gated by valid_out
+    assign data_out = (valid_out) ? round_out : 128'd0;
 
 endmodule
 
@@ -267,15 +283,13 @@ module key_expansion_otf #(
 
     wire [31:0] g_func = sub_rot_w ^ rcon_val(round_step);
 
-    wire [31:0] sub_mid_w;
     `ifdef AES_256
+		wire [31:0] sub_mid_w;
         wire [31:0] mid_in = w[3];
         aes_sbox sm0 (.in(mid_in[31:24]), .out(sub_mid_w[31:24]));
         aes_sbox sm1 (.in(mid_in[23:16]), .out(sub_mid_w[23:16]));
         aes_sbox sm2 (.in(mid_in[15:8]),  .out(sub_mid_w[15:8]));
         aes_sbox sm3 (.in(mid_in[7:0]),   .out(sub_mid_w[7:0]));
-    `else
-        assign sub_mid_w = 32'd0;
     `endif
 
     wire [31:0] next_w [0:Nk-1];
