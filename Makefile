@@ -46,6 +46,8 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 				-l $(SYN_SIM)/compile.log
 
 # Targets
+.PHONY: all rtl.sim rtl.simg rtl.verdi syn syn.sim help
+
 all: rtl.sim syn syn.sim
 
 rtl.sim:
