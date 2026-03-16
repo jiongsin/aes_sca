@@ -2,3 +2,4 @@ libs/
 sim/
 syn/
 !syn/script/
+rtl/lints/
