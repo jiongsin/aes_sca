@@ -7,7 +7,7 @@ DESIGN      ?= aes_operation
 MODE        ?= 128
 PERIOD      ?= 10.0
 PERIOD_TAG   = $(subst .,p,$(PERIOD))ns
-TEST_CNT    ?= 1000
+TEST_CNT    ?= 100
 
 # Paths
 VERIF_DIR   = $(WORKAREA)/verif
@@ -39,7 +39,7 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 				$(WORKAREA)/libs/saed32nm/lib/verilog/saed32nm.v \
 				$(WORKAREA)/libs/saed32nm/lib/verilog/saed32nm_hvt.v \
 				$(WORKAREA)/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
-				$(WORKAREA)/libs/saed32nm/lib/verilog/SRAM2RW16x4.vi \
+				$(WORKAREA)/libs/saed32nm/lib/verilog/SRAM2RW16x4.v \
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv_gls +vcs+fsdbon \
 			    +fsdbfile+$(SYN_SIM)/$(DESIGN).fsdb +sdfverbose \
 				-sdf max:$(DESIGN)_tb.dut:$(DESIGN)_MODE${MODE}_$(PERIOD_TAG).sdf \
@@ -77,8 +77,8 @@ rtl.verdi:
 
 syn:
 	@echo "Starting Synthesis for $(DESIGN) ..."
-	@mkdir -p $(SYN_RES)/sim
-	@cd $(SYN_RES) && \
+	@mkdir -p $(SYN_DIR)/logs
+	@cd $(SYN_DIR) && \
 	 export mode=$(MODE) && \
 	 export period=$(PERIOD) && \
 	 $(DC_SHELL) $(DC_FLAGS) -f $(SYN_TCL) | tee -i $(SYN_LOG)
