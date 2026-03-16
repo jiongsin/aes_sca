@@ -5,6 +5,7 @@ source ./scripts/dc_lib_setup.tcl
 # =====================================================================
 set rtl_files { 
     aes_operation.v
+	aes_sbox.v
 }
 
 # Define Variables
