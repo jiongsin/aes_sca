@@ -14,7 +14,7 @@ module aes_operation_tb;
 
     int test_count;
 
-    always #5 clk = ~clk;
+    always #5ns clk = ~clk;
 
     aes_if#(MODE) intf(clk);
     assign intf.rst_n = rst_n;
@@ -55,7 +55,8 @@ module aes_operation_tb;
         $display("[%0t] [TOP] Starting AES-%0d Simulation", $time, MODE);
         rst_n = 0;
         intf.valid_in = 0; 
-        #25 rst_n = 1;      
+        repeat(5) @(negedge clk);
+		rst_n = 1;      
         repeat(5) @(posedge clk); 
 
         fork
@@ -64,17 +65,48 @@ module aes_operation_tb;
             scb.run();
         join_none
 
-        // Random testing loop
-        for (int i = 0; i < test_count; i++) begin
-            aes_transaction#(MODE) tr = new(); 
-            if(!tr.randomize()) $fatal("Randomization failed");
-            gen2drv.put(tr); 
-            @(e_sync);
-        end
+        `ifdef TVLA_STATIC
+            // Static Test Case
+            begin
+                aes_transaction#(MODE) tr_static = new();
+                tr_static.data_in = 128'h3243f6a8_885a308d_313198a2_e0370734;
+                tr_static.key_in  = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;
+                
+                $display("[%0t] [TVLA] Running Static Vector Simulation", $time);
+                gen2drv.put(tr_static);
+                
+                // Wait for the specific output
+                wait(scb.transaction_count == 1);
+                
+                if (intf.data_out == 128'h3925841d_02dc09fb_dc118597_196a0b32)
+                    $display("[%0t] [TVLA] SUCCESS: Data matches expected result", $time);
+                else
+                    $error("[%0t] [TVLA] FAILURE: Data mismatch!", $time);
+            end
+        `else
+            // Random Simulation
+            begin
+                if (!$value$plusargs("COUNT=%d", test_count)) test_count = 1000;
+                $display("[%0t] [TOP] Starting AES-%0d Random Simulation", $time, MODE);
+                
+                for (int i = 0; i < test_count; i++) begin
+                    aes_transaction#(MODE) tr = new(); 
+                    if(!tr.randomize()) $fatal("Randomization failed");
+                    gen2drv.put(tr); 
+                    @(e_sync);
+                end
+                wait(scb.transaction_count == test_count);
+            end
+        `endif
 
-        wait(scb.transaction_count == test_count);
         scb.report(); 
         $finish;
     end
-
+    
+	initial begin
+        if ($test$plusargs("DUMP_VCD")) begin
+            $dumpfile("./sim/aes_operation.vcd");
+            $dumpvars(0, aes_operation_tb.dut);
+        end
+    end
 endmodule
