@@ -1,5 +1,6 @@
 libs/
 sim/
-syn/
-!syn/script/
+syn/**
+!syn/scripts/
+!syn/scripts/**
 rtl/lints/
