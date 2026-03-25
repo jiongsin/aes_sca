@@ -11,17 +11,25 @@ TEST_CNT    ?= 1000
 TVLA_MODE   ?= DYNAMIC 
 
 # Paths
-VERIF_DIR   = $(WORKAREA)/verif
-VERIF_TB    = $(VERIF_DIR)/tb/$(DESIGN)_tb.sv
-SIM_DIR     = $(WORKAREA)/sim
-SIMV_DIR    = $(SIM_DIR)/$(DESIGN)
+VERIF_DIR    = $(WORKAREA)/verif
+VERIF_TB     = $(VERIF_DIR)/tb/$(DESIGN)_tb.sv
+SIM_DIR      = $(WORKAREA)/sim
+SIMV_DIR     = $(SIM_DIR)/$(DESIGN)
 
-SYN_DIR     = $(WORKAREA)/syn
-SYN_TCL     = $(SYN_DIR)/scripts/$(DESIGN).tcl
-SYN_LOG     = $(SYN_DIR)/logs/$(DESIGN).log
-SYN_RES     = $(SYN_DIR)/results/$(DESIGN)_MODE${MODE}_${PERIOD_TAG}
-SYN_SIM     = $(SYN_RES)/sim
-SYN_NTL     = $(SYN_RES)/$(DESIGN)_MODE${MODE}_${PERIOD_TAG}_ntl.v
+SYN_DIR      = $(WORKAREA)/syn
+SYN_TCL      = $(SYN_DIR)/scripts/$(DESIGN).tcl
+SYN_LOG      = $(SYN_DIR)/logs/$(DESIGN).log
+SYN_RES      = $(SYN_DIR)/results/$(DESIGN)_MODE$(MODE)_$(PERIOD_TAG)
+ifeq ($(TVLA_MODE),STATIC)
+	SYN_SIM      = $(SYN_RES)/sim_static
+	SYN_PSIM_TCL = $(SYN_DIR)/scripts/tvla_static.tcl
+	SYN_PSIM_LOG = $(SYN_DIR)/logs/tvla_static.log
+else
+    SYN_SIM      = $(SYN_RES)/sim
+	SYN_PSIM_TCL = $(SYN_DIR)/scripts/tvla.tcl
+	SYN_PSIM_LOG = $(SYN_DIR)/logs/tvla.log
+endif
+SYN_NTL      = $(SYN_RES)/$(DESIGN)_MODE$(MODE)_$(PERIOD_TAG)_ntl.v
 
 # Tools and Flags
 VCS           = vcs
@@ -42,10 +50,10 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 				$(WORKAREA)/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
 				$(WORKAREA)/libs/saed32nm/lib/verilog/SRAM2RW16x4.v \
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv \
-				-sdf max:$(DESIGN)_tb.dut:$(DESIGN)_MODE${MODE}_$(PERIOD_TAG).sdf \
+				-sdf max:$(DESIGN)_tb.dut:$(DESIGN)_MODE$(MODE)_$(PERIOD_TAG).sdf \
 				-l $(SYN_SIM)/compile.log +neg_tchk
-# +vcs+fsdbon \
-			    +fsdbfile+$(SYN_SIM)/$(DESIGN).fsdb +sdfverbose \
+PT_SHELL      = pt_shell
+
 # Targets
 .PHONY: all rtl.sim rtl.simg rtl.verdi syn syn.sim help
 
@@ -60,7 +68,7 @@ rtl.sim:
 	 $(VCS) $(VCS_FLAGS) $(VCS_TIME) $(ARGS) \
 	 -f $(WORKAREA)/rtl/rtl_filelist.f \
 	 -f $(WORKAREA)/verif/tb/tb_filelist.f \
-	 +define+AES_$(MODE) +COUNT=${TEST_CNT}
+	 +define+AES_$(MODE) +COUNT=$(TEST_CNT)
 
 rtl.verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN) ..."
@@ -77,18 +85,27 @@ syn:
 
 syn.sim:
 	@echo "Starting Pre-Layout Simulation for $(DESIGN) ..."
-	@rm -rf $(SYN_RES)/sim
-	@mkdir -p $(SYN_RES)/sim
+	@rm -rf $(SYN_SIM)
+	@mkdir -p $(SYN_SIM)
 	@cd $(SYN_RES) && \
 	 $(VCS) $(VCS_SYN_FLAGS) $(VCS_TIME) $(ARGS) \
-	 ${SYN_NTL} -f $(WORKAREA)/verif/tb/tb_filelist.f \
-	 +COUNT=${TEST_CNT} +DUMP_VCD \
-	 +define+AES_$(MODE) +define+GLS_SIM +define+TVLA_${TVLA_MODE}
+	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/tb_filelist.f \
+	 +COUNT=$(TEST_CNT) +DUMP_VCD \
+	 +define+AES_$(MODE) +define+GLS_SIM +define+TVLA_$(TVLA_MODE)
 
 syn.verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN) ..."
 	@cd $(SYN_SIM) && \
 	 $(VERDI) $(VERDI_FLAGS)
+
+syn.psim:
+	@echo "Starting Power Simulation for $(DESIGN) ..."
+	@cd $(SYN_DIR) && \
+	 export DESIGN=$(DESIGN) && \
+	 export MODE=$(MODE) && \
+	 export TVLA_MODE=$(TVLA_MODE) && \
+ 	 export PERIOD=$(PERIOD) && \
+	 $(PT_SHELL) -f $(SYN_PSIM_TCL) | tee -i $(SYN_PSIM_LOG)
 
 help:
 	@echo "========================================================================"

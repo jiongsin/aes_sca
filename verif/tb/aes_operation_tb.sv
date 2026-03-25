@@ -65,39 +65,24 @@ module aes_operation_tb;
             scb.run();
         join_none
 
-        `ifdef TVLA_STATIC
-            // Static Test Case
-            begin
-                aes_transaction#(MODE) tr_static = new();
-                tr_static.data_in = 128'h3243f6a8_885a308d_313198a2_e0370734;
-                tr_static.key_in  = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;
+        begin
+            if (!$value$plusargs("COUNT=%d", test_count)) test_count = 1000;
+            $display("[%0t] [TOP] Starting AES-%0d Random Simulation", $time, MODE);
                 
-                $display("[%0t] [TVLA] Running Static Vector Simulation", $time);
-                gen2drv.put(tr_static);
-                
-                // Wait for the specific output
-                wait(scb.transaction_count == 1);
-                
-                if (intf.data_out == 128'h3925841d_02dc09fb_dc118597_196a0b32)
-                    $display("[%0t] [TVLA] SUCCESS: Data matches expected result", $time);
-                else
-                    $error("[%0t] [TVLA] FAILURE: Data mismatch!", $time);
-            end
-        `else
-            // Random Simulation
-            begin
-                if (!$value$plusargs("COUNT=%d", test_count)) test_count = 1000;
-                $display("[%0t] [TOP] Starting AES-%0d Random Simulation", $time, MODE);
-                
-                for (int i = 0; i < test_count; i++) begin
-                    aes_transaction#(MODE) tr = new(); 
+            for (int i = 0; i < test_count; i++) begin
+                aes_transaction#(MODE) tr = new(); 
+				`ifdef TVLA_STATIC
+			        tr.plain_text = 128'h3243f6a8_885a308d_313198a2_e0370734;
+                    tr.key        = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;
+				`else
                     if(!tr.randomize()) $fatal("Randomization failed");
-                    gen2drv.put(tr); 
-                    @(e_sync);
-                end
-                wait(scb.transaction_count == test_count);
+				`endif
+
+                gen2drv.put(tr); 
+                @(e_sync);
             end
-        `endif
+            wait(scb.transaction_count == test_count);
+        end
 
         scb.report(); 
         $finish;
@@ -105,7 +90,11 @@ module aes_operation_tb;
     
 	initial begin
         if ($test$plusargs("DUMP_VCD")) begin
-            $dumpfile("./sim/aes_operation.vcd");
+		    `ifdef TVLA_STATIC
+                $dumpfile("./sim_static/aes_operation.vcd");
+			`else
+                $dumpfile("./sim/aes_operation.vcd");
+			`endif
             $dumpvars(0, aes_operation_tb.dut);
         end
     end
