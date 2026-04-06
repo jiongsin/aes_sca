@@ -18,18 +18,28 @@ module aes_operation_tb;
 
     aes_if#(MODE) intf(clk);
     assign intf.rst_n = rst_n;
-    
-	`ifdef GLS_SIM 
-	    `ifdef AES_256
-        aes_operation_MODE256 dut (
-	    `elsif AES_192
-        aes_operation_MODE192 dut (
-	    `else 
-        aes_operation_MODE128 dut (
-		`endif
+   
+    `ifdef AES_BASE
+        `define VER base
     `else
-    aes_operation #(MODE) dut (
+        `define VER opt
     `endif
+
+    `ifdef AES_256
+        `define MODE 256
+    `elsif AES_192
+        `define MODE 192
+    `else
+        `define MODE 128
+    `endif
+
+    `ifdef GLS_SIM
+        `define DUT_TARGET aes_operation_```VER``_MODE```MODE
+    `else
+        `define DUT_TARGET aes_operation_```VER``#(```MODE)
+    `endif
+
+    `DUT_TARGET dut (
         .clk        (intf.clk),
         .rst_n      (intf.rst_n),
         .valid_in   (intf.valid_in),

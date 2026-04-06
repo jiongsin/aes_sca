@@ -1,30 +1,10 @@
-`ifndef AES_256
-    `ifndef AES_192
-        `define AES_128
-    `endif
-`endif
-
-module aes_operation #(
-    `ifdef AES_256
-        parameter MODE = 256
-    `elsif AES_192
-        parameter MODE = 192
-    `else
-        parameter MODE = 128
-    `endif
+module aes_operation_datapath32 #(
+    parameter MODE = 128
 ) (
     input clk,
     input rst_n,
     input valid_in,
-    
-    `ifdef AES_256
-        input [255:0] key_in,
-    `elsif AES_192
-        input [191:0] key_in,
-    `else
-        input [127:0] key_in,
-    `endif
-
+    input [MODE-1:0] key_in,
     input [127:0]  data_in,
     output reg     valid_out,
     output [127:0] data_out
@@ -159,16 +139,25 @@ module aes_operation #(
         endcase
     end
 
-    key_expansion #(MODE) u_key_ext (
+    aes_key_expansion_opt #(MODE) u_key_ext (
         .round_idx(round_ctr),
         .step_idx(step_count),
         .full_key(key_reg),
         .new_word(expanded_key_word)
     );
 
-    aes_round u_round (
+    wire [31:0] round_key_word;
+    `ifdef AES_256
+        assign round_key_word = key_reg[127:96];   // Use Wi-4 (already in reg)
+    `elsif AES_192
+        assign round_key_word = key_reg[63:32];    // Use Wi-4 (already in reg)
+    `else
+        assign round_key_word = expanded_key_word; // Use Wi (generated now)
+    `endif
+
+    aes_round_opt u_round (
         .col_in(current_column),
-        .key_in(expanded_key_word),
+        .key_in(round_key_word),
         .is_final_round(round_ctr == Nr),
         .col_out(round_word_out)
     );
@@ -177,10 +166,10 @@ module aes_operation #(
 
 endmodule
 
-module aes_round (
+module aes_round_opt (
     input  [31:0] col_in,
     input  [31:0] key_in,
-    input         is_final_round,
+    input  is_final_round,
     output [31:0] col_out
 );
     wire [31:0] sbox_out, mix_out;
@@ -188,11 +177,11 @@ module aes_round (
     genvar i;
     generate
         for (i=0; i<4; i=i+1) begin : sbox_array
-            aes_sbox sb (.data_in(col_in[8*(3-i) +: 8]), .data_out(sbox_out[8*(3-i) +: 8]));
+            aes_sbox_base sb (.data_in(col_in[8*(3-i) +: 8]), .data_out(sbox_out[8*(3-i) +: 8]));
         end
     endgenerate
 
-    aes_mix_columns mix_unit (
+    aes_mix_columns_opt mix_u (
         .data_in(sbox_out),
         .data_out(mix_out)
     );
@@ -200,59 +189,61 @@ module aes_round (
     assign col_out = is_final_round ? (sbox_out ^ key_in) : (mix_out ^ key_in);
 endmodule
 
-module aes_mix_columns (
-    input  [31:0] data_in,
-    output [31:0] data_out
-);
-    wire [7:0] s0, s1, s2, s3, mix_all;
-    assign s0 = data_in[31:24];
-    assign s1 = data_in[23:16];
-    assign s2 = data_in[15:8];
-    assign s3 = data_in[7:0];
-
-    function [7:0] xtime(input [7:0] x);
-        begin
-            xtime = {x[6:0], 1'b0} ^ (x[7] ? 8'h1b : 8'h0);
-        end
-    endfunction
-
-    assign mix_all = s0 ^ s1 ^ s2 ^ s3;
-    assign data_out[31:24] = s0 ^ mix_all ^ xtime(s0 ^ s1);
-    assign data_out[23:16] = s1 ^ mix_all ^ xtime(s1 ^ s2);
-    assign data_out[15:8]  = s2 ^ mix_all ^ xtime(s2 ^ s3);
-    assign data_out[7:0]   = s3 ^ mix_all ^ xtime(s3 ^ s0);
-endmodule
-
-module key_expansion #(parameter MODE = 128) (
-    input [3:0]      round_idx,
-    input [1:0]      step_idx,
-    input [MODE-1:0] full_key,
+module aes_key_expansion_opt #(
+    parameter MODE = 128
+) (
+    input [3:0]       round_idx,
+    input [1:0]       step_idx,
+    input [MODE-1:0]  full_key,
     output reg [31:0] new_word
 );
-    wire [31:0] first_word = full_key[MODE-1 : MODE-32];
+    `ifdef AES_256
+    localparam Nk = 8;
+    `elsif AES_192
+    localparam Nk = 6;
+    `else
+    localparam Nk = 4;
+    `endif
+
+    wire [5:0] i = ((round_idx - 4'd1) * 4) + step_idx + Nk;
+
+    wire [31:0] first_word = full_key[MODE-1 : MODE-32]; 
     wire [31:0] last_word  = full_key[31:0];
+
     wire [31:0] rot_word   = {last_word[23:0], last_word[31:24]};
     wire [31:0] sub_word;
 
-    aes_sbox ks0 (.data_in(rot_word[31:24]), .data_out(sub_word[31:24]));
-    aes_sbox ks1 (.data_in(rot_word[23:16]), .data_out(sub_word[23:16]));
-    aes_sbox ks2 (.data_in(rot_word[15:8]),  .data_out(sub_word[15:8]));
-    aes_sbox ks3 (.data_in(rot_word[7:0]),   .data_out(sub_word[7:0]));
+    aes_sbox_base ks0 (.data_in(rot_word[31:24]), .data_out(sub_word[31:24]));
+    aes_sbox_base ks1 (.data_in(rot_word[23:16]), .data_out(sub_word[23:16]));
+    aes_sbox_base ks2 (.data_in(rot_word[15:8]),  .data_out(sub_word[15:8]));
+    aes_sbox_base ks3 (.data_in(rot_word[7:0]),   .data_out(sub_word[7:0]));
 
-    function [31:0] get_rcon(input [3:0] r);
-        case(r)
-            4'd1:  get_rcon = 32'h01000000; 4'd2:  get_rcon = 32'h02000000;
-            4'd3:  get_rcon = 32'h04000000; 4'd4:  get_rcon = 32'h08000000;
-            4'd5:  get_rcon = 32'h10000000; 4'd6:  get_rcon = 32'h20000000;
-            4'd7:  get_rcon = 32'h40000000; 4'd8:  get_rcon = 32'h80000000;
-            4'd9:  get_rcon = 32'h1B000000; 4'd10: get_rcon = 32'h36000000;
+    `ifdef AES_256
+    wire [31:0] sub_only_word;
+    aes_sbox_base ks4 (.data_in(last_word[31:24]), .data_out(sub_only_word[31:24]));
+    aes_sbox_base ks5 (.data_in(last_word[23:16]), .data_out(sub_only_word[23:16]));
+    aes_sbox_base ks6 (.data_in(last_word[15:8]),  .data_out(sub_only_word[15:8]));
+    aes_sbox_base ks7 (.data_in(last_word[7:0]),   .data_out(sub_only_word[7:0]));
+    `endif
+
+    function [31:0] get_rcon(input [5:0] word_idx);
+        case(word_idx / Nk)
+            6'd1:  get_rcon = 32'h01000000; 6'd2:  get_rcon = 32'h02000000;
+            6'd3:  get_rcon = 32'h04000000; 6'd4:  get_rcon = 32'h08000000;
+            6'd5:  get_rcon = 32'h10000000; 6'd6:  get_rcon = 32'h20000000;
+            6'd7:  get_rcon = 32'h40000000; 6'd8:  get_rcon = 32'h80000000;
+            6'd9:  get_rcon = 32'h1B000000; 6'd10: get_rcon = 32'h36000000;
             default: get_rcon = 32'h00000000;
         endcase
     endfunction
 
     always @(*) begin
-        if (step_idx == 0)
-            new_word = first_word ^ sub_word ^ get_rcon(round_idx);
+        if (i % Nk == 0)
+            new_word = first_word ^ sub_word ^ get_rcon(i);
+        `ifdef AES_256
+        else if (i % 8 == 4)
+            new_word = first_word ^ sub_only_word;
+        `endif
         else
             new_word = first_word ^ last_word;
     end

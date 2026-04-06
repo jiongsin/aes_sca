@@ -3,23 +3,31 @@ source ./scripts/dc_lib_setup.tcl
 # =====================================================================
 # 1. SETUP & READ
 # =====================================================================
-set rtl_files { 
-    aes_operation.v
-	aes_sbox.v
-}
-
-# Define Variables
-set rtl_top aes_operation
+# Get variables from environment
 set mode $env(mode)
+set version $env(version)
 
-analyze -f verilog $rtl_files
+set rtl_files [list \
+    "aes_operation_${version}.v" \
+]
+
+set rtl_top "aes_operation_${version}"
+
+# It is better to force the define to uppercase if your RTL uses caps
+set ver_define [string toupper "AES_${version}"]
+set mode_define "AES_${mode}"
+
+analyze -f verilog $rtl_files -define [list $mode_define $ver_define]
 
 echo "-----------------------------------------------------------------"
 echo "Starting Synthesis for ${rtl_top}"
 echo "-----------------------------------------------------------------"
 
+# Elaborate and set the design
 elaborate $rtl_top -parameters "MODE = $mode"
-current_design ${rtl_top}_MODE${mode}
+
+# Use a collection to find the design name in case DC added a suffix
+current_design [get_designs ${rtl_top}*]
 
 if {[link] == 0} { echo "Error: Linking Failed"; exit 1 }
 if {[check_design] == 0} { echo "Error: Check Design Failed"; exit 1 }
@@ -30,60 +38,43 @@ if {[check_design] == 0} { echo "Error: Check Design Failed"; exit 1 }
 source -echo -verbose ./scripts/constraints/aes_operation_cons.tcl
 
 # =====================================================================
-# 3. OPTIMIZATION CONFIGURATION
+# 3. OPTIMIZATION
 # =====================================================================
-# Physical Hints (DC-Topo only)
 if {[shell_is_in_topographical_mode]} {
     set_aspect_ratio 1
     set_utilization 0.7
 }
 
-# Register & Power Optimization
 set_register_merging [all_registers] true
-# set_optimize_registers true -design [current_design]
 set_cost_priority -delay
 set_dynamic_optimization true
 set_leakage_optimization true
-# set_ungroup [get_cells -hierarchical round_pipeline*.standard_unified_round.round_inst] false
 set_app_var compile_enable_constant_propagation_with_no_boundary_opt false
 
-# Integrated Clock Gating
 set_clock_gating_style -minimum_bitwidth 4 -control_point before -positive_edge_logic {integrated}
 
 # =====================================================================
 # 4. COMPILE
 # =====================================================================
 check_timing
-
-# Run Compile
 compile_ultra -retime -gate_clock
 
-# Rerun compile if timing failed
+# Incremental compile check
 set worst_path [get_timing_paths -delay_type max -nworst 1]
 if {[sizeof_collection $worst_path] > 0} {
     set worst_slack [get_attribute $worst_path slack]
-    
     if {$worst_slack < 0} {
-        echo "-----------------------------------------------------------------"
-        echo " Negative Slack ($worst_slack) detected. Running Incremental Compile..."
-        echo "-----------------------------------------------------------------"
-        # Run incremental with retime to try and squeeze the last bit of timing
+        echo "Negative Slack ($worst_slack) found. Retrying..."
         compile_ultra -incremental -retime 
-    } else {
-        echo "-----------------------------------------------------------------"
-        echo " Timing Met (Slack: $worst_slack). Skipping Incremental Compile."
-        echo "-----------------------------------------------------------------"
     }
 }
-
-# =====================================================================
-# 5. REPORTS & OUTPUT
-# =====================================================================
 check_design
 check_timing
 
-set run_name   "${rtl_top}_MODE${mode}_${period}ns"
-
+# =====================================================================
+# 5. OUTPUTS
+# =====================================================================
+set run_name "${rtl_top}_MODE${mode}_${period}ns"
 file mkdir ./results/${run_name}
 file mkdir ./results/${run_name}/reports
 
