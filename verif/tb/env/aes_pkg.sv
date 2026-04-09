@@ -70,7 +70,7 @@ package aes_pkg;
                 @(vif.drv_cb);
                 vif.drv_cb.valid_in <= 1'b0;
                 
-				wait(vif.mon_cb.valid_out == 1'b1);
+                wait(vif.mon_cb.valid_out == 1'b1);
                 @(vif.mon_cb);
             end
         endtask
@@ -116,8 +116,6 @@ package aes_pkg;
                     end
 
                     CLEANUP: begin
-                        // Wait for BOTH valid signals to be low
-                        // This prevents the "Ghost" repeat of the last data
                         if (vif.mon_cb.valid_in === 1'b0 && 
                             vif.mon_cb.valid_out === 1'b0) begin
                             state = IDLE;
@@ -153,11 +151,11 @@ package aes_pkg;
                 aes_ref_model(MODE, wide_key, trans.plain_text, expected_cipher);
 
                 if (trans.cipher_text === expected_cipher) begin
-                    $display("[%0t] [PASS] Trans #%0d | Data: %h", 
-                             $time, transaction_count, trans.plain_text);
+                    $display("[%0t] [PASS] Trans #%0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
+                             $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text);
                 end else begin
                     mismatch_count++;
-                    $error("[%0t] [FAIL] Trans #%0d Mismatch!", $time, transaction_count);
+                    $error("[%0t] [FAIL] Trans #%0d Mismatch! | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text, expected_cipher);
                 end
             end
         endtask

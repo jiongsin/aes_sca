@@ -234,20 +234,20 @@ module aes_key_expansion_opt #(
     wire [31:0] last_word  = full_key[31:0];
 
     wire [31:0] rot_word   = {last_word[23:0], last_word[31:24]};
-    wire [31:0] sub_word;
-
-    aes_sbox_opt ks0 (.data_in(rot_word[31:24]), .data_out(sub_word[31:24]));
-    aes_sbox_opt ks1 (.data_in(rot_word[23:16]), .data_out(sub_word[23:16]));
-    aes_sbox_opt ks2 (.data_in(rot_word[15:8]),  .data_out(sub_word[15:8]));
-    aes_sbox_opt ks3 (.data_in(rot_word[7:0]),   .data_out(sub_word[7:0]));
+    
+    wire [31:0] sbox_input;
+    wire [31:0] sbox_output;
 
     `ifdef AES_256
-    wire [31:0] sub_only_word;
-    aes_sbox_opt ks4 (.data_in(last_word[31:24]), .data_out(sub_only_word[31:24]));
-    aes_sbox_opt ks5 (.data_in(last_word[23:16]), .data_out(sub_only_word[23:16]));
-    aes_sbox_opt ks6 (.data_in(last_word[15:8]),  .data_out(sub_only_word[15:8]));
-    aes_sbox_opt ks7 (.data_in(last_word[7:0]),   .data_out(sub_only_word[7:0]));
+        assign sbox_input = (i % 8 == 4) ? last_word : rot_word;
+    `else
+        assign sbox_input = rot_word;
     `endif
+
+    aes_sbox_opt ks0 (.data_in(sbox_input[31:24]), .data_out(sbox_output[31:24]));
+    aes_sbox_opt ks1 (.data_in(sbox_input[23:16]), .data_out(sbox_output[23:16]));
+    aes_sbox_opt ks2 (.data_in(sbox_input[15:8]),  .data_out(sbox_output[15:8]));
+    aes_sbox_opt ks3 (.data_in(sbox_input[7:0]),   .data_out(sbox_output[7:0]));
 
     function [31:0] get_rcon(input [5:0] word_idx);
         case(word_idx / Nk)
@@ -262,10 +262,10 @@ module aes_key_expansion_opt #(
 
     always @(*) begin
         if (i % Nk == 0)
-            new_word = first_word ^ sub_word ^ get_rcon(i);
+            new_word = first_word ^ sbox_output ^ get_rcon(i);
         `ifdef AES_256
         else if (i % 8 == 4)
-            new_word = first_word ^ sub_only_word;
+            new_word = first_word ^ sbox_output;
         `endif
         else
             new_word = first_word ^ last_word;
