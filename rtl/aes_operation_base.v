@@ -31,7 +31,7 @@ module aes_operation_base #(
     wire [MODE-1:0] generated_next_key_reg;
     wire [127:0] round_state_out;
 
-    aes_key_expansion_128_base #(MODE) u_key_ext (
+    aes_key_expansion_base #(MODE) u_key_ext (
         .round_ctr(round_ctr),
         .key_reg(key_reg),
         .round_key(round_key),
@@ -98,7 +98,6 @@ module aes_operation_base #(
 
 endmodule
 
-
 module aes_round_base (
     input  [127:0] state_in,
     input  [127:0] key_in,
@@ -138,7 +137,6 @@ module aes_round_base (
     
 endmodule
 
-
 module aes_mix_columns_base (
     input  [31:0] data_in,
     output [31:0] data_out
@@ -164,8 +162,7 @@ module aes_mix_columns_base (
     
 endmodule
 
-
-module aes_key_expansion_128_base #(
+module aes_key_expansion_base #(
     parameter MODE = 128
 ) (
     input [3:0] round_ctr,
@@ -183,73 +180,36 @@ module aes_key_expansion_128_base #(
     `endif
 
     wire [5:0] i0 = ((round_ctr - 4'd1) * 4) + 0 + Nk;
-    wire [5:0] i1 = ((round_ctr - 4'd1) * 4) + 1 + Nk;
     wire [5:0] i2 = ((round_ctr - 4'd1) * 4) + 2 + Nk;
-    wire [5:0] i3 = ((round_ctr - 4'd1) * 4) + 3 + Nk;
 
-    wire [31:0] w0_out, w1_out, w2_out, w3_out;
+    wire [31:0] k_f0 = key_reg[MODE-1   -: 32];
+    wire [31:0] k_f1 = key_reg[MODE-33  -: 32];
+    wire [31:0] k_f2 = key_reg[MODE-65  -: 32];
+    wire [31:0] k_f3 = key_reg[MODE-97  -: 32];
 
-    aes_single_word_gen_base #(MODE) gen0 (
-        .i(i0), .w_first(key_reg[MODE-1   -: 32]), .w_last(key_reg[31:0]), .w_out(w0_out)
-    );
-    aes_single_word_gen_base #(MODE) gen1 (
-        .i(i1), .w_first(key_reg[MODE-33  -: 32]), .w_last(w0_out),        .w_out(w1_out)
-    );
-    aes_single_word_gen_base #(MODE) gen2 (
-        .i(i2), .w_first(key_reg[MODE-65  -: 32]), .w_last(w1_out),        .w_out(w2_out)
-    );
-    aes_single_word_gen_base #(MODE) gen3 (
-        .i(i3), .w_first(key_reg[MODE-97  -: 32]), .w_last(w2_out),        .w_out(w3_out)
-    );
+    wire [31:0] w0_no_sbox = k_f0 ^ key_reg[31:0];
+    wire [31:0] w1_no_sbox = k_f1 ^ w0_no_sbox;
 
-    wire [127:0] generated_words = {w0_out, w1_out, w2_out, w3_out};
+    reg  [31:0] sbox_in_word;
+    wire [31:0] sbox_out_word;
 
-    `ifdef AES_256
-        assign next_key_reg = {key_reg[127:0], generated_words};
-        assign round_key = key_reg[127:0];
-    `elsif AES_192
-        assign next_key_reg = {key_reg[63:0], generated_words};
-        assign round_key = {key_reg[63:0], w0_out, w1_out};
-    `else
-        assign next_key_reg = generated_words;
-        assign round_key = generated_words;
-    `endif
+    always @(*) begin
+        sbox_in_word = {key_reg[23:0], key_reg[31:24]}; 
+        `ifdef AES_256
+        if (i0 % 8 == 4) begin
+            sbox_in_word = key_reg[31:0]; 
+        end
+        `elsif AES_192
+        if (i2 % 6 == 0) begin
+            sbox_in_word = {w1_no_sbox[23:0], w1_no_sbox[31:24]}; 
+        end
+        `endif
+    end
 
-endmodule
-
-
-module aes_single_word_gen_base #(
-    parameter MODE = 128
-) (
-    input [5:0] i,
-    input [31:0] w_first,
-    input [31:0] w_last,
-    output reg [31:0] w_out
-);
-
-    `ifdef AES_256
-        localparam Nk = 8;
-    `elsif AES_192
-        localparam Nk = 6;
-    `else
-        localparam Nk = 4;
-    `endif
-
-    wire [31:0] rot_word = {w_last[23:0], w_last[31:24]};
-    wire [31:0] sub_word;
-    
-    aes_sbox_base ks0 (.data_in(rot_word[31:24]), .data_out(sub_word[31:24]));
-    aes_sbox_base ks1 (.data_in(rot_word[23:16]), .data_out(sub_word[23:16]));
-    aes_sbox_base ks2 (.data_in(rot_word[15:8]),  .data_out(sub_word[15:8]));
-    aes_sbox_base ks3 (.data_in(rot_word[7:0]),   .data_out(sub_word[7:0]));
-
-    `ifdef AES_256
-        wire [31:0] sub_only_word;
-        aes_sbox_base ks4 (.data_in(w_last[31:24]), .data_out(sub_only_word[31:24]));
-        aes_sbox_base ks5 (.data_in(w_last[23:16]), .data_out(sub_only_word[23:16]));
-        aes_sbox_base ks6 (.data_in(w_last[15:8]),  .data_out(sub_only_word[15:8]));
-        aes_sbox_base ks7 (.data_in(w_last[7:0]),   .data_out(sub_only_word[7:0]));
-    `endif
+    aes_sbox_base ks0 (.data_in(sbox_in_word[31:24]), .data_out(sbox_out_word[31:24]));
+    aes_sbox_base ks1 (.data_in(sbox_in_word[23:16]), .data_out(sbox_out_word[23:16]));
+    aes_sbox_base ks2 (.data_in(sbox_in_word[15:8]),  .data_out(sbox_out_word[15:8]));
+    aes_sbox_base ks3 (.data_in(sbox_in_word[7:0]),   .data_out(sbox_out_word[7:0]));
 
     function [31:0] get_rcon(input [5:0] word_idx);
         case(word_idx / Nk)
@@ -262,17 +222,44 @@ module aes_single_word_gen_base #(
         endcase
     endfunction
 
+    reg [31:0] w0, w1, w2, w3;
+
     always @(*) begin
-        if (i % Nk == 0)
-            w_out = w_first ^ sub_word ^ get_rcon(i);
+        w0 = w0_no_sbox;
+        if (i0 % Nk == 0) begin
+            w0 = k_f0 ^ sbox_out_word ^ get_rcon(i0);
+        end
         `ifdef AES_256
-        else if (i % 8 == 4)
-            w_out = w_first ^ sub_only_word;
+        else if (i0 % 8 == 4) begin
+            w0 = k_f0 ^ sbox_out_word;
+        end
         `endif
-        else
-            w_out = w_first ^ w_last;
+
+        w1 = k_f1 ^ w0;
+        
+        w2 = k_f2 ^ w1;
+        `ifdef AES_192
+        if (i2 % 6 == 0) begin
+            w2 = k_f2 ^ sbox_out_word ^ get_rcon(i2);
+        end
+        `endif
+        
+        w3 = k_f3 ^ w2;
     end
-    
+
+    wire [127:0] generated_words = {w0, w1, w2, w3};
+
+    `ifdef AES_256
+        assign next_key_reg = {key_reg[127:0], generated_words};
+        assign round_key = key_reg[127:0];
+    `elsif AES_192
+        assign next_key_reg = {key_reg[63:0], generated_words};
+        assign round_key = {key_reg[63:0], w0, w1};
+    `else
+        assign next_key_reg = generated_words;
+        assign round_key = generated_words;
+    `endif
+
 endmodule
 
 module aes_sbox_base (

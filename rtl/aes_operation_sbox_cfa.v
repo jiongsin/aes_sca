@@ -31,14 +31,14 @@ module aes_operation_sbox_cfa #(
     wire [MODE-1:0] generated_next_key_reg;
     wire [127:0] round_state_out;
 
-    aes_key_expansion_base #(MODE) u_key_ext (
+    aes_key_expansion_sbox_cfa #(MODE) u_key_ext (
         .round_ctr(round_ctr),
         .key_reg(key_reg),
         .round_key(round_key),
         .next_key_reg(generated_next_key_reg)
     );
 
-    aes_round_base u_round (
+    aes_round_sbox_cfa u_round (
         .state_in(state_reg),
         .key_in(round_key),
         .is_final_round(round_ctr == Nr),
@@ -98,7 +98,7 @@ module aes_operation_sbox_cfa #(
 
 endmodule
 
-module aes_round_base (
+module aes_round_sbox_cfa (
     input  [127:0] state_in,
     input  [127:0] key_in,
     input  is_final_round,
@@ -128,16 +128,39 @@ module aes_round_base (
 
     wire [127:0] mix_out;
     
-    aes_mix_columns_base mix0 (.data_in(shift_out[127:96]), .data_out(mix_out[127:96]));
-    aes_mix_columns_base mix1 (.data_in(shift_out[95:64]),  .data_out(mix_out[95:64]));
-    aes_mix_columns_base mix2 (.data_in(shift_out[63:32]),  .data_out(mix_out[63:32]));
-    aes_mix_columns_base mix3 (.data_in(shift_out[31:0]),   .data_out(mix_out[31:0]));
+    aes_mix_columns_sbox_cfa mix0 (.data_in(shift_out[127:96]), .data_out(mix_out[127:96]));
+    aes_mix_columns_sbox_cfa mix1 (.data_in(shift_out[95:64]),  .data_out(mix_out[95:64]));
+    aes_mix_columns_sbox_cfa mix2 (.data_in(shift_out[63:32]),  .data_out(mix_out[63:32]));
+    aes_mix_columns_sbox_cfa mix3 (.data_in(shift_out[31:0]),   .data_out(mix_out[31:0]));
 
     assign state_out = is_final_round ? (shift_out ^ key_in) : (mix_out ^ key_in);
-    
 endmodule
 
-module aes_key_expansion_base #(
+module aes_mix_columns_sbox_cfa (
+    input  [31:0] data_in,
+    output [31:0] data_out
+);
+
+    wire [7:0] s0, s1, s2, s3, mix_all;
+    assign s0 = data_in[31:24];
+    assign s1 = data_in[23:16];
+    assign s2 = data_in[15:8];
+    assign s3 = data_in[7:0];
+
+    function [7:0] xtime(input [7:0] x);
+        begin
+            xtime = {x[6:0], 1'b0} ^ (x[7] ? 8'h1b : 8'h0);
+        end
+    endfunction
+
+    assign mix_all = s0 ^ s1 ^ s2 ^ s3;
+    assign data_out[31:24] = s0 ^ mix_all ^ xtime(s0 ^ s1);
+    assign data_out[23:16] = s1 ^ mix_all ^ xtime(s1 ^ s2);
+    assign data_out[15:8]  = s2 ^ mix_all ^ xtime(s2 ^ s3);
+    assign data_out[7:0]   = s3 ^ mix_all ^ xtime(s3 ^ s0);
+endmodule
+
+module aes_key_expansion_sbox_cfa #(
     parameter MODE = 128
 ) (
     input [3:0] round_ctr,
