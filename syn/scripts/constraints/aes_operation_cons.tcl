@@ -26,10 +26,10 @@ set_input_delay  -min [expr $DELAY * 0.5] -clock clk $all_inputs_no_clk
 set_output_delay -max $DELAY -clock clk [all_outputs]
 set_output_delay -min [expr $DELAY * 0.5] -clock clk [all_outputs]
 # Driving Cell & Loads
-set_driving_cell -max -no_design_rule -lib_cell INVX1_RVT [all_inputs]
-set MAX_INPUT_LOAD [expr [load_of saed32rvt_ss0p95v125c/AND2X1_RVT/A1] * 10]
-set_max_capacitance $MAX_INPUT_LOAD [all_inputs]
-set_load [expr $MAX_INPUT_LOAD * 3] [all_outputs]
+# set_driving_cell -max -no_design_rule -lib_cell INVX1_RVT [all_inputs]
+# set MAX_INPUT_LOAD [expr [load_of saed32rvt_ss0p95v125c/AND2X1_RVT/A1] * 10]
+# set_max_capacitance $MAX_INPUT_LOAD [all_inputs]
+# set_load [expr $MAX_INPUT_LOAD * 3] [all_outputs]
 
 # DESIGN RULES (DRC)
 set_max_transition 0.5 [current_design]

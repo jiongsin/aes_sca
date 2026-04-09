@@ -1,6 +1,6 @@
 libs/
 sim/
-syn/**
+syn/
 !syn/scripts/
-!syn/scripts/**
+syn/scripts/my_venv
 rtl/lints/

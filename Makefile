@@ -10,12 +10,13 @@ endif
 VER         ?= opt
 VER_CAP      = $(shell echo $(VER) | tr a-z A-Z)
 DESIGN      ?= aes_operation
-DESIGN_VER   = $(DESIGN)_$(VER)
+DESIGN_VER   = $(DESIGN)_$(VER)_MODE$(MODE)_$(PERIOD_TAG)
 MODE        ?= 128
 PERIOD      ?= 10.0
 PERIOD_TAG   = $(subst .,p,$(PERIOD))ns
 TEST_CNT    ?= 1000
-TVLA_MODE   ?= dynamic 
+TVLA        ?= normal 
+TVLA_CAP     = $(shell echo $(TVLA) | tr a-z A-Z)
 
 # Paths
 VERIF_DIR    = $(WORKAREA)/verif
@@ -26,17 +27,19 @@ SIMV_DIR     = $(SIM_DIR)/$(DESIGN_VER)
 SYN_DIR      = $(WORKAREA)/syn
 SYN_TCL      = $(SYN_DIR)/scripts/$(DESIGN).tcl
 SYN_LOG      = $(SYN_DIR)/logs/$(DESIGN_VER).log
-SYN_RES      = $(SYN_DIR)/results/$(DESIGN_VER)_MODE$(MODE)_$(PERIOD_TAG)
-ifeq ($(TVLA_MODE),static)
+SYN_RES      = $(SYN_DIR)/results/$(DESIGN_VER)
+ifeq ($(TVLA),static)
     SYN_SIM      = $(SYN_RES)/sim_static
-    SYN_PSIM_TCL = $(SYN_DIR)/scripts/tvla_static.tcl
     SYN_PSIM_LOG = $(SYN_DIR)/logs/tvla_static.log
-else
+else ifeq ($(TVLA),dynamic)
+    SYN_SIM      = $(SYN_RES)/sim_dynamic
+    SYN_PSIM_LOG = $(SYN_DIR)/logs/tvla_dynamic.log
+else 
     SYN_SIM      = $(SYN_RES)/sim
-    SYN_PSIM_TCL = $(SYN_DIR)/scripts/tvla.tcl
-    SYN_PSIM_LOG = $(SYN_DIR)/logs/tvla.log
+    SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER).log
 endif
-SYN_NTL      = $(SYN_RES)/$(DESIGN_VER)_MODE$(MODE)_$(PERIOD_TAG)_ntl.v
+SYN_PSIM_TCL = $(SYN_DIR)/scripts/tvla.tcl
+SYN_NTL      = $(SYN_RES)/$(DESIGN_VER)_ntl.v
 
 # Tools and Flags
 VCS           = vcs
@@ -52,26 +55,23 @@ VERDI_FLAGS   = -ssf $(DESIGN_VER).fsdb -dbdir simv.daidir \
 DC_SHELL      = dc_shell 
 DC_FLAGS      = -topo
 VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
-                $(WORKAREA)/libs/saed32nm/lib/verilog/saed32nm.v \
-                $(WORKAREA)/libs/saed32nm/lib/verilog/saed32nm_hvt.v \
-                $(WORKAREA)/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
-                $(WORKAREA)/libs/saed32nm/lib/verilog/SRAM2RW16x4.v \
-                -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
-                +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
-                -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER)_MODE$(MODE)_$(PERIOD_TAG).sdf \
-                -l $(SYN_SIM)/compile.log +neg_tchk
-PT_SHELL      = pt_shell
-# /data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
+                /data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
                 /data/synopsys/lib/saed14nm/lib/stdcell_rvt/verilog/saed14nm_rvt.v \
                 /data/synopsys/lib/saed14nm/lib/stdcell_lvt/verilog/saed14nm_lvt.v \
-                /data/synopsys/lib/saed14nm/lib/stdcell_slvt/verilog/saed14n
+                /data/synopsys/lib/saed14nm/lib/stdcell_slvt/verilog/saed14nm_slvt.v \
+                -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
+                +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
+                -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER).sdf \
+                -l $(SYN_SIM)/compile.log +neg_tchk
+PT_SHELL      = pt_shell
+
 # Targets
-.PHONY: all sim verdi syn syn.sim syn.verdi syn.psim debug help
+.PHONY: all sim verdi syn syn.sim syn.verdi syn.psim syn.tvla debug help
 
 all: sim syn syn.sim
 
 sim:
-	@echo "Starting Simulation for $(DESIGN_VER) ..."
+	@echo "Starting Simulation for $(DESIGN_VER)..."
 	@mkdir -p $(SIM_DIR)
 	@rm -rf $(SIM_DIR)/$(DESIGN_VER)
 	@mkdir -p $(SIM_DIR)/$(DESIGN_VER)
@@ -83,12 +83,12 @@ sim:
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +COUNT=$(TEST_CNT)
 
 verdi:
-	@echo "Starting Waveform Viewer for $(DESIGN_VER) ..."
+	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
 	@cd $(SIMV_DIR) && \
 	 $(VERDI) $(VERDI_FLAGS) 
 
 syn:
-	@echo "Starting Synthesis for $(DESIGN_VER) ..."
+	@echo "Starting Synthesis for $(DESIGN_VER)..."
 	@mkdir -p $(SYN_DIR)/logs
 	@cd $(SYN_DIR) && \
 	 export mode=$(MODE) && \
@@ -97,7 +97,7 @@ syn:
 	 $(DC_SHELL) $(DC_FLAGS) -f $(SYN_TCL) | tee -i $(SYN_LOG)
 
 syn.sim:
-	@echo "Starting Pre Layout Simulation for $(DESIGN_VER) ..."
+	@echo "Starting Pre Layout Simulation for $(DESIGN_VER)..."
 	@rm -rf $(SYN_SIM)
 	@mkdir -p $(SYN_SIM)
 	@cd $(SYN_RES) && \
@@ -105,21 +105,29 @@ syn.sim:
 	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/tb_filelist.f \
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
-	 +define+TVLA_$(TVLA_MODE)
+	 +define+TVLA_$(TVLA_CAP)
 
 syn.verdi:
-	@echo "Starting Waveform Viewer for $(DESIGN_VER) ..."
+	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
 	@cd $(SYN_SIM) && \
 	 $(VERDI) $(VERDI_FLAGS)
 
 syn.psim:
-	@echo "Starting Power Simulation for $(DESIGN_VER) ..."
+	@echo "Starting Power Simulation for $(DESIGN_VER)..."
 	@cd $(SYN_DIR) && \
-	 export DESIGN=$(DESIGN_VER) && \
+	 export DESIGN=$(DESIGN)_$(VER) && \
+	 export DESIGN_VER=$(DESIGN_VER) && \
 	 export MODE=$(MODE) && \
-	 export TVLA_MODE=$(TVLA_MODE) && \
+	 export TVLA=$(TVLA) && \
  	 export PERIOD=$(PERIOD) && \
 	 $(PT_SHELL) -f $(SYN_PSIM_TCL) | tee -i $(SYN_PSIM_LOG)
+
+syn.tvla: 
+	@echo "Starting Leakage Assessment for $(DESIGN_VER)..."
+	$(MAKE) syn.sim TVLA=static
+	$(MAKE) syn.psim TVLA=static
+	$(MAKE) syn.sim TVLA=dynamic
+	$(MAKE) syn.psim TVLA=dynamic
 
 debug:
 	@echo "--------------------------------------------------------"
@@ -132,7 +140,7 @@ debug:
 	@echo "MODE:         $(MODE)"
 	@echo "PERIOD:       $(PERIOD) ($(PERIOD_TAG))"
 	@echo "TEST_CNT:     $(TEST_CNT)"
-	@echo "TVLA_MODE:    $(TVLA_MODE)"
+	@echo "TVLA:         $(TVLA)"
 	@echo ""
 	@echo "VERIF_DIR:    $(VERIF_DIR)"
 	@echo "VERIF_TB:     $(VERIF_TB)"

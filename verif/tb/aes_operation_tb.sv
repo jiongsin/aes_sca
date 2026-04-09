@@ -1,7 +1,7 @@
 module aes_operation_tb;
     import aes_pkg::*;
     
-	`ifdef AES_256
+    `ifdef AES_256
     parameter MODE = 256;
     `elsif AES_192
     parameter MODE = 192;
@@ -81,12 +81,15 @@ module aes_operation_tb;
                 
             for (int i = 0; i < test_count; i++) begin
                 aes_transaction#(MODE) tr = new(); 
-				`ifdef TVLA_STATIC
-			        tr.plain_text = 128'h3243f6a8_885a308d_313198a2_e0370734;
-                    tr.key        = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;
-				`else
-                    if(!tr.randomize()) $fatal("Randomization failed");
-				`endif
+                    `ifdef TVLA_STATIC
+                        tr.plain_text = 128'h3243f6a8_885a308d_313198a2_e0370734;
+                        tr.key        = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;
+                    `elsif TVLA_DYNAMIC
+		        if(!std::randomize(tr.plain_text)) $fatal("Randomization failed");
+		        tr.key        = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;
+                    `else
+                        if(!tr.randomize()) $fatal("Randomization failed");
+                    `endif
 
                 gen2drv.put(tr); 
                 @(e_sync);
@@ -98,13 +101,15 @@ module aes_operation_tb;
         $finish;
     end
     
-	initial begin
+    initial begin
         if ($test$plusargs("DUMP_VCD")) begin
-		    `ifdef TVLA_STATIC
+            `ifdef TVLA_STATIC
                 $dumpfile("./sim_static/aes_operation.vcd");
-			`else
+            `elsif TVLA_DYNAMIC
+                $dumpfile("./sim_dynamic/aes_operation.vcd");
+            `else
                 $dumpfile("./sim/aes_operation.vcd");
-			`endif
+            `endif
             $dumpvars(0, aes_operation_tb.dut);
         end
     end
