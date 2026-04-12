@@ -7,7 +7,6 @@ package aes_pkg;
         output bit [127:0] data_out
     );
 
-    // --- Transaction Class ---
     class aes_transaction #(parameter MODE = 128);
         rand bit [MODE-1:0] key;
         rand bit [127:0]    plain_text;
@@ -44,7 +43,6 @@ package aes_pkg;
         endfunction
     endclass
 
-    // --- Driver Class ---
     class aes_driver #(parameter MODE = 128);
         virtual aes_if#(MODE) vif;
         mailbox gen2drv;
@@ -63,12 +61,28 @@ package aes_pkg;
                 gen2drv.get(trans);
             
                 @(vif.drv_cb);
-                vif.drv_cb.key_in   <= trans.key;
-                vif.drv_cb.data_in  <= trans.plain_text;
-                vif.drv_cb.valid_in <= 1'b1;
-            
-                @(vif.drv_cb);
-                vif.drv_cb.valid_in <= 1'b0;
+                
+                `ifdef IS_128BIT
+                    vif.drv_cb.key_in   <= trans.key;
+                    vif.drv_cb.data_in  <= trans.plain_text;
+                    vif.drv_cb.valid_in <= 1'b1;
+                
+                    @(vif.drv_cb);
+                    vif.drv_cb.valid_in <= 1'b0;
+                `else
+                    vif.drv_cb.valid_in <= 1'b1;
+                    for (int i = 0; i < (MODE/32); i++) begin
+                        vif.drv_cb.key_in <= trans.key[MODE - 1 - (i*32) -: 32];
+                        if (i >= (MODE/32) - 4) begin
+                            vif.drv_cb.data_in <= trans.plain_text[127 - ((i - ((MODE/32) - 4)) * 32) -: 32];
+                        end else begin
+                            vif.drv_cb.data_in <= 32'd0;
+                        end
+                        if (i < (MODE/32) - 1) @(vif.drv_cb);
+                    end
+                    @(vif.drv_cb);
+                    vif.drv_cb.valid_in <= 1'b0;
+                `endif
                 
                 wait(vif.mon_cb.valid_out == 1'b1);
                 @(vif.mon_cb);
@@ -76,7 +90,6 @@ package aes_pkg;
         endtask
     endclass
 
-    // --- Monitor Class (State Machine Style) ---
     class aes_monitor #(parameter MODE = 128);
         virtual aes_if#(MODE) vif;
         mailbox mon2scb;
@@ -100,15 +113,32 @@ package aes_pkg;
                     IDLE: begin
                         if (vif.mon_cb.valid_in === 1'b1) begin
                             trans = new();
-                            trans.key = vif.mon_cb.key_in;
-                            trans.plain_text = vif.mon_cb.data_in;
+                            `ifdef IS_128BIT
+                                trans.key = vif.mon_cb.key_in;
+                                trans.plain_text = vif.mon_cb.data_in;
+                            `else
+                                for (int i = 0; i < (MODE/32); i++) begin
+                                    trans.key[MODE - 1 - (i*32) -: 32] = vif.mon_cb.key_in;
+                                    if (i >= (MODE/32) - 4) begin
+                                        trans.plain_text[127 - ((i - ((MODE/32) - 4)) * 32) -: 32] = vif.mon_cb.data_in;
+                                    end
+                                    if (i < (MODE/32) - 1) @(vif.mon_cb);
+                                end
+                            `endif
                             state = WAIT_OUTPUT;
                         end
                     end
 
                     WAIT_OUTPUT: begin
                         if (vif.mon_cb.valid_out === 1'b1) begin
-                            trans.cipher_text = vif.mon_cb.data_out;
+                            `ifdef IS_128BIT
+                                trans.cipher_text = vif.mon_cb.data_out;
+                            `else
+                                for (int i = 0; i < 4; i++) begin
+                                    trans.cipher_text[127 - (i*32) -: 32] = vif.mon_cb.data_out;
+                                    if (i < 3) @(vif.mon_cb);
+                                end
+                            `endif
                             mon2scb.put(trans);
                             ->next_item;
                             state = CLEANUP;
@@ -126,7 +156,6 @@ package aes_pkg;
         endtask
     endclass
 
-    // --- Scoreboard Class ---
     class aes_scoreboard #(parameter MODE = 128);
         mailbox mon2scb;
         int transaction_count = 0;
