@@ -7,7 +7,7 @@ module aes_operation_base #(
     input [MODE-1:0] key_in,
     input [127:0]  data_in,
     output reg     valid_out,
-    output [127:0] data_out
+    output reg [127:0] data_out
 );
 
     `ifdef AES_256
@@ -52,12 +52,14 @@ module aes_operation_base #(
             state_reg  <= 128'd0;
             key_reg    <= {MODE{1'b0}};
             valid_out  <= 1'b0;
+            data_out   <= 128'd0;
         end else begin
             state      <= next_state;
             round_ctr  <= next_round_ctr;
             state_reg  <= next_state_reg;
             key_reg    <= next_key_reg;
             valid_out  <= next_valid_out;
+            data_out   <= next_valid_out ? next_state_reg : 128'd0;
         end
     end
 
@@ -93,9 +95,6 @@ module aes_operation_base #(
             default: next_state = S_IDLE;
         endcase
     end
-
-    assign data_out = (valid_out) ? state_reg : 128'd0;
-
 endmodule
 
 module aes_round_base (
@@ -134,7 +133,6 @@ module aes_round_base (
     aes_mix_columns_base mix3 (.data_in(shift_out[31:0]),   .data_out(mix_out[31:0]));
 
     assign state_out = is_final_round ? (shift_out ^ key_in) : (mix_out ^ key_in);
-    
 endmodule
 
 module aes_mix_columns_base (
@@ -159,7 +157,6 @@ module aes_mix_columns_base (
     assign data_out[23:16] = s1 ^ mix_all ^ xtime(s1 ^ s2);
     assign data_out[15:8]  = s2 ^ mix_all ^ xtime(s2 ^ s3);
     assign data_out[7:0]   = s3 ^ mix_all ^ xtime(s3 ^ s0);
-    
 endmodule
 
 module aes_key_expansion_base #(
@@ -259,7 +256,6 @@ module aes_key_expansion_base #(
         assign next_key_reg = generated_words;
         assign round_key = generated_words;
     `endif
-
 endmodule
 
 module aes_sbox_base (
@@ -336,4 +332,3 @@ module aes_sbox_base (
         endcase
     end
 endmodule
-

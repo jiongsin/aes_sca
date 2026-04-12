@@ -4,10 +4,10 @@ module aes_operation_opt #(
     input clk,
     input rst_n,
     input valid_in,
-    input [MODE-1:0] key_in,
-    input [127:0]  data_in,
-    output reg     valid_out,
-    output [127:0] data_out
+    input [31:0] key_in,
+    input [31:0] data_in,
+    output reg valid_out,
+    output reg [31:0] data_out
 );
 
     `ifdef AES_256
@@ -18,54 +18,73 @@ module aes_operation_opt #(
         localparam Nr = 10;
     `endif
 
-    localparam S_IDLE = 1'b0;
+    localparam LOAD_CYCLES = MODE / 32;
+
+    localparam S_LOAD = 1'b0;
     localparam S_CALC = 1'b1;
 
     reg state, next_state;
-    reg [3:0] round_ctr, next_round_ctr;
+    reg [3:0] main_ctr, next_main_ctr;
     reg [1:0] step_count, next_step_count;
     reg [127:0] state_reg, next_state_reg;
     reg [MODE-1:0] key_reg, next_key_reg;
-    reg next_valid_out;
     
+    wire [MODE-1:0] full_new_key  = {key_reg[MODE-33:0], key_in};
+    wire [127:0]    full_new_data = {state_reg[95:0], data_in};
+
     reg [31:0] current_column;
     wire [31:0] round_word_out;
     wire [31:0] expanded_key_word;
+    wire [31:0] round_key_word;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state      <= S_IDLE;
-            round_ctr  <= 4'd0;
-            step_count <= 2'd0;
-            state_reg  <= 128'd0;
-            key_reg    <= {MODE{1'b0}};
-            valid_out  <= 1'b0;
+            state         <= S_LOAD;
+            main_ctr      <= 4'd0;
+            step_count    <= 2'd0;
+            state_reg     <= 128'd0;
+            key_reg       <= {MODE{1'b0}};
+            valid_out     <= 1'b0;
+            data_out      <= 32'd0;
         end else begin
-            state      <= next_state;
-            round_ctr  <= next_round_ctr;
-            step_count <= next_step_count;
-            state_reg  <= next_state_reg;
-            key_reg    <= next_key_reg;
-            valid_out  <= next_valid_out;
+            state         <= next_state;
+            main_ctr      <= next_main_ctr;
+            step_count    <= next_step_count;
+            state_reg     <= next_state_reg;
+            key_reg       <= next_key_reg;
+            
+            if (state == S_CALC && main_ctr == Nr) begin
+                valid_out     <= 1'b1;
+                data_out      <= round_word_out;
+            end else begin
+                valid_out     <= 1'b0;
+                data_out      <= 32'd0;
+            end
         end
     end
 
     always @(*) begin
         next_state      = state;
-        next_round_ctr  = round_ctr;
+        next_main_ctr   = main_ctr;
         next_step_count = step_count;
         next_state_reg  = state_reg;
         next_key_reg    = key_reg;
-        next_valid_out  = 1'b0;
 
         case (state)
-            S_IDLE: begin
+            S_LOAD: begin
                 if (valid_in) begin
-                    next_state      = S_CALC;
-                    next_state_reg  = data_in ^ key_in[MODE-1 -: 128];
-                    next_key_reg    = key_in;
-                    next_round_ctr  = 4'd1;
-                    next_step_count = 2'd0;
+                    next_key_reg   = full_new_key;
+                    next_state_reg = full_new_data;
+
+                    if (main_ctr == LOAD_CYCLES - 1) begin
+                        next_state      = S_CALC;
+                        next_main_ctr   = 4'd1;
+                        next_step_count = 2'd0;
+                        
+                        next_state_reg  = full_new_data ^ full_new_key[MODE-1 -: 128];
+                    end else begin
+                        next_main_ctr = main_ctr + 4'd1;
+                    end
                 end
             end
 
@@ -113,19 +132,18 @@ module aes_operation_opt #(
 
                 if (step_count == 2'd3) begin
                     next_step_count = 2'd0;
-                    
-                    if (round_ctr == Nr) begin
-                        next_valid_out = 1'b1;
-                        next_state     = S_IDLE;
+                    if (main_ctr == Nr) begin
+                        next_state    = S_LOAD;
+                        next_main_ctr = 4'd0;
                     end else begin
-                        next_round_ctr = round_ctr + 4'd1;
+                        next_main_ctr = main_ctr + 4'd1;
                     end
                 end else begin
                     next_step_count = step_count + 2'd1;
                 end
             end
             
-            default: next_state = S_IDLE;
+            default: next_state = S_LOAD;
         endcase
     end
 
@@ -140,30 +158,26 @@ module aes_operation_opt #(
     end
 
     aes_key_expansion_opt #(MODE) u_key_ext (
-        .round_idx(round_ctr),
+        .round_idx(main_ctr),
         .step_idx(step_count),
         .full_key(key_reg),
         .new_word(expanded_key_word)
     );
 
-    wire [31:0] round_key_word;
     `ifdef AES_256
-        assign round_key_word = key_reg[127:96];   // Use Wi-4 (already in reg)
+        assign round_key_word = key_reg[127:96];
     `elsif AES_192
-        assign round_key_word = key_reg[63:32];    // Use Wi-4 (already in reg)
+        assign round_key_word = key_reg[63:32];
     `else
-        assign round_key_word = expanded_key_word; // Use Wi (generated now)
+        assign round_key_word = expanded_key_word;
     `endif
 
     aes_round_opt u_round (
         .col_in(current_column),
         .key_in(round_key_word),
-        .is_final_round(round_ctr == Nr),
+        .is_final_round(main_ctr == Nr),
         .col_out(round_word_out)
     );
-
-    assign data_out = (valid_out) ? state_reg : 128'd0;
-
 endmodule
 
 module aes_round_opt (
@@ -393,4 +407,3 @@ module gf4_inverter (
                       (q[2] & q[1] & q[0]) ^ (q[3] & q[0]) ^ (q[3] & q[1]) ^ (q[2] & q[1]) ^ 
                       q[2] ^ q[0] ^ q[1];
 endmodule
-

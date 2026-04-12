@@ -7,7 +7,7 @@ module aes_operation_sbox_cfa #(
     input [MODE-1:0] key_in,
     input [127:0]  data_in,
     output reg     valid_out,
-    output [127:0] data_out
+    output reg [127:0] data_out
 );
 
     `ifdef AES_256
@@ -52,12 +52,14 @@ module aes_operation_sbox_cfa #(
             state_reg  <= 128'd0;
             key_reg    <= {MODE{1'b0}};
             valid_out  <= 1'b0;
+            data_out   <= 128'd0;
         end else begin
             state      <= next_state;
             round_ctr  <= next_round_ctr;
             state_reg  <= next_state_reg;
             key_reg    <= next_key_reg;
             valid_out  <= next_valid_out;
+            data_out   <= next_valid_out ? next_state_reg : 128'd0;
         end
     end
 
@@ -93,9 +95,6 @@ module aes_operation_sbox_cfa #(
             default: next_state = S_IDLE;
         endcase
     end
-
-    assign data_out = (valid_out) ? state_reg : 128'd0;
-
 endmodule
 
 module aes_round_sbox_cfa (
@@ -110,7 +109,7 @@ module aes_round_sbox_cfa (
     genvar i;
     generate
         for (i=0; i<16; i=i+1) begin : sbox_array
-            aes_sbox_cfa sb (
+            aes_sbox_sbox_cfa sb (
                 .data_in(state_in[8*(15-i) +: 8]), 
                 .data_out(sub_out[8*(15-i) +: 8])
             );
@@ -204,10 +203,10 @@ module aes_key_expansion_sbox_cfa #(
         `endif
     end
 
-    aes_sbox_cfa ks0 (.data_in(sbox_in_word[31:24]), .data_out(sbox_out_word[31:24]));
-    aes_sbox_cfa ks1 (.data_in(sbox_in_word[23:16]), .data_out(sbox_out_word[23:16]));
-    aes_sbox_cfa ks2 (.data_in(sbox_in_word[15:8]),  .data_out(sbox_out_word[15:8]));
-    aes_sbox_cfa ks3 (.data_in(sbox_in_word[7:0]),   .data_out(sbox_out_word[7:0]));
+    aes_sbox_sbox_cfa ks0 (.data_in(sbox_in_word[31:24]), .data_out(sbox_out_word[31:24]));
+    aes_sbox_sbox_cfa ks1 (.data_in(sbox_in_word[23:16]), .data_out(sbox_out_word[23:16]));
+    aes_sbox_sbox_cfa ks2 (.data_in(sbox_in_word[15:8]),  .data_out(sbox_out_word[15:8]));
+    aes_sbox_sbox_cfa ks3 (.data_in(sbox_in_word[7:0]),   .data_out(sbox_out_word[7:0]));
 
     function [31:0] get_rcon(input [5:0] word_idx);
         case(word_idx / Nk)
@@ -257,7 +256,6 @@ module aes_key_expansion_sbox_cfa #(
         assign next_key_reg = generated_words;
         assign round_key = generated_words;
     `endif
-
 endmodule
 
 module aes_sbox_cfa (
