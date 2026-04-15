@@ -5,3 +5,4 @@ syn/
 syn/scripts/my_venv
 rtl/lints/
 pnr/ 
+pnr/scripts
