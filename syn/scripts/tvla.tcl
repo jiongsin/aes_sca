@@ -28,7 +28,7 @@ set_app_var power_analysis_mode time_based
 
 read_fsdb ./results/${DESIGN_VER}/sim_${TVLA}/${DESIGN_VER}.fsdb \
     -strip_path aes_operation_tb/dut \
-    -time {105 450075}
+    -time {95 450095}
 # read_vcd ./results/${DESIGN_VER}/sim_${TVLA}/${DESIGN_VER}.vcd \
     -strip_path aes_operation_tb/dut \
     -time {105 450075}
