@@ -1,3 +1,4 @@
+
 module aes_operation_opt #(
     parameter MODE = 128
 ) (
@@ -80,7 +81,6 @@ module aes_operation_opt #(
                         next_state      = S_CALC;
                         next_main_ctr   = 4'd1;
                         next_step_count = 2'd0;
-                        
                         next_state_reg  = full_new_data ^ full_new_key[MODE-1 -: 128];
                     end else begin
                         next_main_ctr = main_ctr + 4'd1;
@@ -292,13 +292,13 @@ module aes_sbox_opt (
 );
     wire [7:0] mapped, inverted, restored;
 
-    isomorphic_mapping map_unit      (.in(data_in),  .out(mapped));
-    multiplicative_inverter inv_unit (.in(mapped),   .out(inverted));
-    inverse_mapping restore_unit     (.in(inverted), .out(restored));
-    affine_transformation aff_unit   (.in(restored), .out(data_out));
+    isomorphic_mapping_opt map_unit      (.in(data_in),  .out(mapped));
+    multiplicative_inverter_opt inv_unit (.in(mapped),   .out(inverted));
+    inverse_mapping_opt restore_unit     (.in(inverted), .out(restored));
+    affine_transformation_opt aff_unit   (.in(restored), .out(data_out));
 endmodule
 
-module affine_transformation (
+module affine_transformation_opt (
     input  [7:0] in,
     output [7:0] out
 );
@@ -312,7 +312,7 @@ module affine_transformation (
     assign out[7] = in[7] ^ in[3] ^ in[4] ^ in[5] ^ in[6] ^ 1'b0;
 endmodule
 
-module isomorphic_mapping (
+module isomorphic_mapping_opt (
     input  [7:0] in,
     output [7:0] out
 );
@@ -326,7 +326,7 @@ module isomorphic_mapping (
     assign out[0] = in[6] ^ in[1] ^ in[0];
 endmodule
 
-module inverse_mapping (
+module inverse_mapping_opt (
     input  [7:0] in,
     output [7:0] out
 );
@@ -340,7 +340,7 @@ module inverse_mapping (
     assign out[0] = in[6] ^ in[5] ^ in[4] ^ in[2] ^ in[0];
 endmodule
 
-module multiplicative_inverter (
+module multiplicative_inverter_opt (
     input  [7:0] in,
     output [7:0] out
 );
@@ -359,18 +359,18 @@ module multiplicative_inverter (
     assign b_sq_lambda[0] = b_sq[2];
 
     assign b_plus_c = b ^ c; 
-    gf4_multiplier mul_inst (.q(c), .a(b_plus_c), .k(c_mul_bplusc));
+    gf4_multiplier_opt mul_inst (.q(c), .a(b_plus_c), .k(c_mul_bplusc));
     assign combined = b_sq_lambda ^ c_mul_bplusc;
 
-    gf4_inverter inv4_inst (.q(combined), .q_inv(combined_inv));
+    gf4_inverter_opt inv4_inst (.q(combined), .q_inv(combined_inv));
 
-    gf4_multiplier mul_high (.q(b), .a(combined_inv), .k(out_h));
-    gf4_multiplier mul_low (.q(b_plus_c), .a(combined_inv), .k(out_l));
+    gf4_multiplier_opt mul_high (.q(b), .a(combined_inv), .k(out_h));
+    gf4_multiplier_opt mul_low (.q(b_plus_c), .a(combined_inv), .k(out_l));
 
     assign out = {out_h, out_l};
 endmodule
 
-module gf4_multiplier (
+module gf4_multiplier_opt (
     input  [3:0] q, a,
     output [3:0] k
 );
@@ -378,9 +378,9 @@ module gf4_multiplier (
     wire [1:0] ah = a[3:2], al = a[1:0];
     wire [1:0] mul_hh, mul_ll, mul_hl_lh, ph_phi;
 
-    gf2_multiplier m1 (.q(qh), .a(ah), .k(mul_hh));
-    gf2_multiplier m2 (.q(ql), .a(al), .k(mul_ll));
-    gf2_multiplier m3 (.q(qh ^ ql), .a(ah ^ al), .k(mul_hl_lh));
+    gf2_multiplier_opt m1 (.q(qh), .a(ah), .k(mul_hh));
+    gf2_multiplier_opt m2 (.q(ql), .a(al), .k(mul_ll));
+    gf2_multiplier_opt m3 (.q(qh ^ ql), .a(ah ^ al), .k(mul_hl_lh));
 
     assign ph_phi[1] = mul_hh[1] ^ mul_hh[0];
     assign ph_phi[0] = mul_hh[1];
@@ -388,7 +388,7 @@ module gf4_multiplier (
     assign k = {(mul_hl_lh ^ mul_ll), (ph_phi ^ mul_ll)};
 endmodule
 
-module gf2_multiplier (
+module gf2_multiplier_opt (
     input  [1:0] q, a,
     output [1:0] k
 );
@@ -396,7 +396,7 @@ module gf2_multiplier (
     assign k[0] = (q[1] & a[1]) ^ (q[0] & a[0]);
 endmodule
 
-module gf4_inverter (
+module gf4_inverter_opt (
     input  [3:0] q,
     output [3:0] q_inv
 );
