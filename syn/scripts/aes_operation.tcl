@@ -45,6 +45,10 @@ if {[shell_is_in_topographical_mode]} {
     set_utilization 0.7
 }
 
+set run_name "${rtl_top}_MODE${mode}_${period}ns"
+read_saif -input ../sim/${run_name}/${run_name}.saif \
+    -instance_name aes_operation_tb/dut
+
 set_register_merging [all_registers] true
 set_cost_priority -delay
 set_dynamic_optimization true
@@ -74,7 +78,6 @@ check_timing
 # =====================================================================
 # 5. OUTPUTS
 # =====================================================================
-set run_name "${rtl_top}_MODE${mode}_${period}ns"
 file mkdir ./results/${run_name}
 file mkdir ./results/${run_name}/reports
 

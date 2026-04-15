@@ -81,6 +81,8 @@ sim:
 	 -f $(WORKAREA)/verif/tb/tb_filelist.f \
 	 -top $(DESIGN)_tb \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +COUNT=$(TEST_CNT)
+	@cd $(SIMV_DIR) && \
+	 fsdb2saif $(DESIGN_VER).fsdb -o $(DESIGN_VER).saif
 
 verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
