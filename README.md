@@ -1,3 +1,1 @@
-AES-GCM Accelerator
-# aes_gcm_accelerator
-Design of a Lightweight Side-Channel Resistant AES-GCM Accelerator with AMBA Interface
+ASIC DESIGN OF SIDE-CHANNEL RESILIENT AES-GCM IP CORE FOR ARM-BASED SYSTEM-ON-CHIPS
