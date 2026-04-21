@@ -109,7 +109,7 @@ module aes_round_sbox_cfa (
     genvar i;
     generate
         for (i=0; i<16; i=i+1) begin : sbox_array
-            aes_sbox_sbox_cfa sb (
+            aes_sbox_cfa sb (
                 .data_in(state_in[8*(15-i) +: 8]), 
                 .data_out(sub_out[8*(15-i) +: 8])
             );
@@ -203,10 +203,10 @@ module aes_key_expansion_sbox_cfa #(
         `endif
     end
 
-    aes_sbox_sbox_cfa ks0 (.data_in(sbox_in_word[31:24]), .data_out(sbox_out_word[31:24]));
-    aes_sbox_sbox_cfa ks1 (.data_in(sbox_in_word[23:16]), .data_out(sbox_out_word[23:16]));
-    aes_sbox_sbox_cfa ks2 (.data_in(sbox_in_word[15:8]),  .data_out(sbox_out_word[15:8]));
-    aes_sbox_sbox_cfa ks3 (.data_in(sbox_in_word[7:0]),   .data_out(sbox_out_word[7:0]));
+    aes_sbox_cfa ks0 (.data_in(sbox_in_word[31:24]), .data_out(sbox_out_word[31:24]));
+    aes_sbox_cfa ks1 (.data_in(sbox_in_word[23:16]), .data_out(sbox_out_word[23:16]));
+    aes_sbox_cfa ks2 (.data_in(sbox_in_word[15:8]),  .data_out(sbox_out_word[15:8]));
+    aes_sbox_cfa ks3 (.data_in(sbox_in_word[7:0]),   .data_out(sbox_out_word[7:0]));
 
     function [31:0] get_rcon(input [5:0] word_idx);
         case(word_idx / Nk)
@@ -331,13 +331,13 @@ module multiplicative_inverter_sbox_cfa (
     assign b_sq_lambda[0] = b_sq[2];
 
     assign b_plus_c = b ^ c; 
-    gf4_multiplier mul_inst (.q(c), .a(b_plus_c), .k(c_mul_bplusc));
+    gf4_multiplier_sbox_cfa mul_inst (.q(c), .a(b_plus_c), .k(c_mul_bplusc));
     assign combined = b_sq_lambda ^ c_mul_bplusc;
 
-    gf4_inverter inv4_inst (.q(combined), .q_inv(combined_inv));
+    gf4_inverter_sbox_cfa inv4_inst (.q(combined), .q_inv(combined_inv));
 
-    gf4_multiplier mul_high (.q(b), .a(combined_inv), .k(out_h));
-    gf4_multiplier mul_low (.q(b_plus_c), .a(combined_inv), .k(out_l));
+    gf4_multiplier_sbox_cfa mul_high (.q(b), .a(combined_inv), .k(out_h));
+    gf4_multiplier_sbox_cfa mul_low (.q(b_plus_c), .a(combined_inv), .k(out_l));
 
     assign out = {out_h, out_l};
 endmodule
@@ -350,9 +350,9 @@ module gf4_multiplier_sbox_cfa (
     wire [1:0] ah = a[3:2], al = a[1:0];
     wire [1:0] mul_hh, mul_ll, mul_hl_lh, ph_phi;
 
-    gf2_multiplier m1 (.q(qh), .a(ah), .k(mul_hh));
-    gf2_multiplier m2 (.q(ql), .a(al), .k(mul_ll));
-    gf2_multiplier m3 (.q(qh ^ ql), .a(ah ^ al), .k(mul_hl_lh));
+    gf2_multiplier_sbox_cfa m1 (.q(qh), .a(ah), .k(mul_hh));
+    gf2_multiplier_sbox_cfa m2 (.q(ql), .a(al), .k(mul_ll));
+    gf2_multiplier_sbox_cfa m3 (.q(qh ^ ql), .a(ah ^ al), .k(mul_hl_lh));
 
     assign ph_phi[1] = mul_hh[1] ^ mul_hh[0];
     assign ph_phi[0] = mul_hh[1];
