@@ -7,9 +7,9 @@ make sim VER=base;
 make sim MODE=192 VER=base; 
 make sim MODE=256 VER=base;
 
-make sim VER=sbox_cfa; 
-make sim MODE=192 VER=sbox_cfa; 
-make sim MODE=256 VER=sbox_cfa;
+make sim VER=cfa; 
+make sim MODE=192 VER=cfa; 
+make sim MODE=256 VER=cfa;
 
 make sim VER=datapath32; 
 make sim MODE=192 VER=datapath32; 
@@ -24,9 +24,9 @@ make syn VER=base;
 make syn MODE=192 VER=base; 
 make syn MODE=256 VER=base;
 
-make syn VER=sbox_cfa; 
-make syn MODE=192 VER=sbox_cfa; 
-make syn MODE=256 VER=sbox_cfa;
+make syn VER=cfa; 
+make syn MODE=192 VER=cfa; 
+make syn MODE=256 VER=cfa;
 
 make syn VER=datapath32; 
 make syn MODE=192 VER=datapath32; 
@@ -41,9 +41,9 @@ make syn.sim VER=base;
 make syn.sim MODE=192 VER=base; 
 make syn.sim MODE=256 VER=base;
 
-make syn.sim VER=sbox_cfa; 
-make syn.sim MODE=192 VER=sbox_cfa; 
-make syn.sim MODE=256 VER=sbox_cfa;
+make syn.sim VER=cfa; 
+make syn.sim MODE=192 VER=cfa; 
+make syn.sim MODE=256 VER=cfa;
 
 make syn.sim VER=datapath32; 
 make syn.sim MODE=192 VER=datapath32; 
