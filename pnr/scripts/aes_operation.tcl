@@ -1,27 +1,5 @@
-####################################################################
-# Part 1 Setup and Library Loading
-####################################################################
-set LIB_PATH "/home/host/libs/saed32nm/lib"
-lappend search_path . "${LIB_PATH}/tech/milkyway" "${LIB_PATH}/tech/star_rc" 
+source ./scripts/icc2_lib_setup_32nm.tcl
 
-# Create the library if it does not exist yet
-if {![file isdirectory MYLIB ]} {
-    create_lib MYLIB \
-        -technology ${LIB_PATH}/tech/milkyway/saed32nm_1p9m_mw.tf \
-        -ref_libs [list \
-            "${LIB_PATH}/stdcell_hvt/ndm/saed32hvt.ndm" \
-            "${LIB_PATH}/stdcell_lvt/ndm/saed32lvt.ndm" \
-            "${LIB_PATH}/stdcell_rvt/ndm/saed32rvt.ndm" \
-        ]
-}
-open_lib MYLIB
-
-# Set the number of processor cores to use
-set_host_option -max 8
-
-####################################################################
-# Part 2 Design Variables and Netlist
-####################################################################
 set mode 128
 set version opt
 set period 10p0
@@ -33,9 +11,6 @@ read_verilog ../syn/results/${run_name}/${run_name}_ntl.v
 link_block
 current_block
 
-####################################################################
-# Part 3 Parasitics and Timing Constraints
-####################################################################
 # Load technology files for parasitic extraction
 read_parasitic_tech -layermap saed32nm_tf_itf_tluplus.map \
     -tlup saed32nm_1p9m_Cmax.tluplus \
@@ -49,9 +24,6 @@ read_parasitic_tech -layermap saed32nm_tf_itf_tluplus.map \
 set_parasitic_parameters -early_spec maxTLU -late_spec maxTLU
 read_sdc ../syn/results/${run_name}/${run_name}.sdc
 
-####################################################################
-# Part 4 Routing Layer and Site Setup
-####################################################################
 # Define how cells are placed and oriented
 set_attribute [get_site_defs unit] symmetry Y
 set_attribute [get_site_defs unit] is_default true
@@ -67,9 +39,6 @@ set_attribute [get_layers {M2}] track_offset 0.04
 # Limit the layers available for general routing
 set_ignored_layers -max_routing_layer M6 -min_routing_layer M1
 
-####################################################################
-# Part 5 Floorplan and Initial Placement
-####################################################################
 # Set the chip shape and size
 initialize_floorplan -side_ratio {1 1} -core_offset {15} -core_utilization 0.95
 shape_blocks
@@ -84,9 +53,6 @@ create_placement -floorplan
 set_block_pin_constraints -self -allowed_layers {M3 M4 M5 M6}
 place_pins -self
 
-####################################################################
-# Part 6 Power Grid Creation
-####################################################################
 # Clean any old power settings
 remove_pg_strategies -all
 remove_pg_patterns -all
@@ -143,9 +109,6 @@ set_pg_strategy_via_rule R_m2_to_rails -via_rule { \
 compile_pg -strategies {core_pgring S_upper_mesh S_m2_straps S_std_rails} \
             -via_rule {R_upper_to_m2 R_m2_to_rails}
 
-####################################################################
-# Part 7 Final Validation and Legalization
-####################################################################
 # Fill empty spaces and ensure all cells are in legal spots
 create_stdcell_fillers -lib_cells {saed32hvt/SHFILL*}
 connect_pg_net -automatic
