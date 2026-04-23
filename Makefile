@@ -7,6 +7,7 @@ ifndef WORKAREA
     $(error ERROR: WORKAREA is not set. Please 'export WORKAREA=/path/to/project' first)
 endif
 
+LIBV        ?= 14
 VER         ?= opt
 VER_CAP      = $(shell echo $(VER) | tr a-z A-Z)
 DESIGN      ?= aes_operation
@@ -55,20 +56,29 @@ VERDI_FLAGS   = -ssf $(DESIGN_VER).fsdb -dbdir simv.daidir \
 DC_SHELL      = dc_shell 
 DC_FLAGS      = -topo
 VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
-                /data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
-                /data/synopsys/lib/saed14nm/lib/stdcell_rvt/verilog/saed14nm_rvt.v \
-                /data/synopsys/lib/saed14nm/lib/stdcell_lvt/verilog/saed14nm_lvt.v \
-                /data/synopsys/lib/saed14nm/lib/stdcell_slvt/verilog/saed14nm_slvt.v \
+                /home/host/libs/saed32nm/lib/verilog/saed32nm_hvt.v \
+                /home/host/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
+				/home/host/libs/saed32nm/lib/verilog/saed32nm.v \
+				/home/host/libs/saed32nm/lib/verilog/SRAM2RW16x4.v \
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
                 +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
                 -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER).sdf \
                 -l $(SYN_SIM)/compile.log +neg_tchk
+				#/data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
+                #/data/synopsys/lib/saed14nm/lib/stdcell_rvt/verilog/saed14nm_rvt.v \
+                #/data/synopsys/lib/saed14nm/lib/stdcell_lvt/verilog/saed14nm_lvt.v \
+                #/data/synopsys/lib/saed14nm/lib/stdcell_slvt/verilog/saed14nm_slvt.v \;
 PT_SHELL      = pt_shell
 
 # Targets
-.PHONY: all sim verdi syn syn.sim syn.verdi syn.psim syn.tvla debug help
+.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla debug help
 
 all: sim syn syn.sim
+
+libv:
+	@cp syn/scripts/dc_lib_setup_$(LIBV)nm.tcl syn/scripts/dc_lib_setup.tcl
+	@cp syn/scripts/pt_lib_setup_$(LIBV)nm.tcl syn/scripts/pt_lib_setup.tcl
+	@cp pnr/scripts/icc2_lib_setup_$(LIBV)nm.tcl pnr/scripts/icc2_lib_setup.tcl
 
 sim:
 	@echo "Starting Simulation for $(DESIGN_VER)..."
