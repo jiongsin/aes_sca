@@ -1,4 +1,4 @@
-source ./scripts/icc2_lib_setup_32nm.tcl
+source ./scripts/icc2_lib_setup.tcl
 
 set mode 128
 set version opt
