@@ -1,8 +1,8 @@
 libs/
 sim/
-syn/
+syn/*
 !syn/scripts/
 syn/scripts/my_venv
 rtl/lints/
-pnr/ 
+pnr/* 
 !pnr/scripts
