@@ -28,10 +28,10 @@ set_app_var power_analysis_mode time_based
 
 read_fsdb ./results/${DESIGN_VER}/sim_${TVLA}/${DESIGN_VER}.fsdb \
     -strip_path aes_operation_tb/dut \
-    -time {95 450095}
-# read_vcd ./results/${DESIGN_VER}/sim_${TVLA}/${DESIGN_VER}.vcd \
+    -time {95 490085}
+# read_vcd ./results/${DESIGN_VER}/sim_${TVLA}/aes_operation.vcd \
     -strip_path aes_operation_tb/dut \
-    -time {105 450075}
+    -time {95 490085}
 
 # Check and Report Activity
 report_switching_activity > ./results/${DESIGN_VER}/tvla_${TVLA}/switching_activity.rpt

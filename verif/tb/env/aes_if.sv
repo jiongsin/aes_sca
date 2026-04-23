@@ -36,14 +36,14 @@ interface aes_operation_if #(parameter MODE = 128) (input logic clk);
 
     // Clocking block for synchronous driving
     clocking drv_cb @(posedge clk);
-        default input #0 output #0;
+        default input #3ns output #2ns;
         output valid_in, key_in, data_in;
         input  valid_out, data_out;
     endclocking
 
     // Clocking block for monitoring
     clocking mon_cb @(posedge clk);
-        default input #0 output #0;
+        default input #5ns output #0;
         input valid_in, key_in, data_in;
         input valid_out, data_out;
     endclocking

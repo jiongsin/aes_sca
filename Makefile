@@ -122,6 +122,7 @@ syn.sim:
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
 	 +define+TVLA_$(TVLA_CAP)
+	 # +DUMP_VCD
 
 syn.verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
