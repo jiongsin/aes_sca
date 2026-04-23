@@ -1,3 +1,5 @@
+make libv LIBV=14
+
 # RTL Simulation
 make sim; 
 make sim MODE=192; 
@@ -33,19 +35,9 @@ make syn MODE=192 VER=datapath32;
 make syn MODE=256 VER=datapath32;
 
 # Pre Layout Simulation
-make syn.sim; 
-make syn.sim MODE=192; 
-make syn.sim MODE=256;
+# make syn.sim; 
+# make syn.sim MODE=192; 
+# make syn.sim MODE=256;
 
-make syn.sim VER=base; 
-make syn.sim MODE=192 VER=base; 
-make syn.sim MODE=256 VER=base;
-
-make syn.sim VER=cfa; 
-make syn.sim MODE=192 VER=cfa; 
-make syn.sim MODE=256 VER=cfa;
-
-make syn.sim VER=datapath32; 
-make syn.sim MODE=192 VER=datapath32; 
-make syn.sim MODE=256 VER=datapath32;
+make syn.tvla
 
