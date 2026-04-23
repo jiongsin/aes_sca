@@ -56,15 +56,19 @@ VERDI_FLAGS   = -ssf $(DESIGN_VER).fsdb -dbdir simv.daidir \
 DC_SHELL      = dc_shell 
 DC_FLAGS      = -topo
 VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
-                /home/host/libs/saed32nm/lib/verilog/saed32nm_hvt.v \
-                /home/host/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
-				/home/host/libs/saed32nm/lib/verilog/saed32nm.v \
-				/home/host/libs/saed32nm/lib/verilog/SRAM2RW16x4.v \
+		/data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
+                /data/synopsys/lib/saed14nm/lib/stdcell_rvt/verilog/saed14nm_rvt.v \
+                /data/synopsys/lib/saed14nm/lib/stdcell_lvt/verilog/saed14nm_lvt.v \
+                /data/synopsys/lib/saed14nm/lib/stdcell_slvt/verilog/saed14nm_slvt.v
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
                 +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
                 -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER).sdf \
                 -l $(SYN_SIM)/compile.log +neg_tchk
-				#/data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
+		#/home/host/libs/saed32nm/lib/verilog/saed32nm_hvt.v \
+                #/home/host/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
+                #/home/host/libs/saed32nm/lib/verilog/saed32nm.v \
+                #/home/host/libs/saed32nm/lib/verilog/SRAM2RW16x4.v \
+                #/data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
                 #/data/synopsys/lib/saed14nm/lib/stdcell_rvt/verilog/saed14nm_rvt.v \
                 #/data/synopsys/lib/saed14nm/lib/stdcell_lvt/verilog/saed14nm_lvt.v \
                 #/data/synopsys/lib/saed14nm/lib/stdcell_slvt/verilog/saed14nm_slvt.v \;
