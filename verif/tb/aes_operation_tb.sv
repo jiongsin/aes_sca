@@ -12,8 +12,8 @@ module aes_operation_tb;
     `ifdef AES_BASE
         `define VER base
         `define IS_128BIT
-    `elsif AES_SBOX_CFA
-        `define VER sbox_cfa
+    `elsif AES_CFA
+        `define VER cfa
         `define IS_128BIT
     `elsif AES_DATAPATH32
         `define VER datapath32
@@ -38,7 +38,7 @@ module aes_operation_tb;
 
     always #5ns clk = ~clk;
 
-    aes_if#(MODE) intf(clk);
+    aes_operation_if#(MODE) intf(clk);
     assign intf.rst_n = rst_n;
    
     `ifdef GLS_SIM
@@ -62,9 +62,9 @@ module aes_operation_tb;
         mailbox gen2drv = new(1); 
         mailbox mon2scb = new();
 
-        aes_driver#(MODE)    drv = new(intf, gen2drv, e_sync);
-        aes_monitor#(MODE)   mon = new(intf, mon2scb, e_sync);
-        aes_scoreboard#(MODE) scb = new(mon2scb);
+        aes_operation_driver#(MODE)    drv = new(intf, gen2drv, e_sync);
+        aes_operation_monitor#(MODE)   mon = new(intf, mon2scb, e_sync);
+        aes_operation_scoreboard#(MODE) scb = new(mon2scb);
 
         if (!$value$plusargs("COUNT=%d", test_count)) begin
             test_count = 1000;
@@ -88,7 +88,7 @@ module aes_operation_tb;
             $display("[%0t] [TOP] Starting AES-%0d Random Simulation", $time, MODE);
                 
             for (int i = 0; i < test_count; i++) begin
-                aes_transaction#(MODE) tr = new(); 
+                aes_operation_transaction#(MODE) tr = new(); 
                     `ifdef TVLA_STATIC
                         tr.plain_text = 128'h3243f6a8_885a308d_313198a2_e0370734;
                         tr.key        = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;

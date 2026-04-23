@@ -1,4 +1,4 @@
-module aes_operation_sbox_cfa #(
+module aes_operation_cfa #(
     parameter MODE = 128
 ) (
     input clk,
@@ -31,14 +31,14 @@ module aes_operation_sbox_cfa #(
     wire [MODE-1:0] generated_next_key_reg;
     wire [127:0] round_state_out;
 
-    aes_key_expansion_sbox_cfa #(MODE) u_key_ext (
+    aes_key_expansion_cfa #(MODE) u_key_ext (
         .round_ctr(round_ctr),
         .key_reg(key_reg),
         .round_key(round_key),
         .next_key_reg(generated_next_key_reg)
     );
 
-    aes_round_sbox_cfa u_round (
+    aes_round_cfa u_round (
         .state_in(state_reg),
         .key_in(round_key),
         .is_final_round(round_ctr == Nr),
@@ -97,7 +97,7 @@ module aes_operation_sbox_cfa #(
     end
 endmodule
 
-module aes_round_sbox_cfa (
+module aes_round_cfa (
     input  [127:0] state_in,
     input  [127:0] key_in,
     input  is_final_round,
@@ -127,15 +127,15 @@ module aes_round_sbox_cfa (
 
     wire [127:0] mix_out;
     
-    aes_mix_columns_sbox_cfa mix0 (.data_in(shift_out[127:96]), .data_out(mix_out[127:96]));
-    aes_mix_columns_sbox_cfa mix1 (.data_in(shift_out[95:64]),  .data_out(mix_out[95:64]));
-    aes_mix_columns_sbox_cfa mix2 (.data_in(shift_out[63:32]),  .data_out(mix_out[63:32]));
-    aes_mix_columns_sbox_cfa mix3 (.data_in(shift_out[31:0]),   .data_out(mix_out[31:0]));
+    aes_mix_columns_cfa mix0 (.data_in(shift_out[127:96]), .data_out(mix_out[127:96]));
+    aes_mix_columns_cfa mix1 (.data_in(shift_out[95:64]),  .data_out(mix_out[95:64]));
+    aes_mix_columns_cfa mix2 (.data_in(shift_out[63:32]),  .data_out(mix_out[63:32]));
+    aes_mix_columns_cfa mix3 (.data_in(shift_out[31:0]),   .data_out(mix_out[31:0]));
 
     assign state_out = is_final_round ? (shift_out ^ key_in) : (mix_out ^ key_in);
 endmodule
 
-module aes_mix_columns_sbox_cfa (
+module aes_mix_columns_cfa (
     input  [31:0] data_in,
     output [31:0] data_out
 );
@@ -159,7 +159,7 @@ module aes_mix_columns_sbox_cfa (
     assign data_out[7:0]   = s3 ^ mix_all ^ xtime(s3 ^ s0);
 endmodule
 
-module aes_key_expansion_sbox_cfa #(
+module aes_key_expansion_cfa #(
     parameter MODE = 128
 ) (
     input [3:0] round_ctr,
@@ -264,13 +264,13 @@ module aes_sbox_cfa (
 );
     wire [7:0] mapped, inverted, restored;
 
-    isomorphic_mapping_sbox_cfa map_unit      (.in(data_in),  .out(mapped));
-    multiplicative_inverter_sbox_cfa inv_unit (.in(mapped),   .out(inverted));
-    inverse_mapping_sbox_cfa restore_unit     (.in(inverted), .out(restored));
-    affine_transformation_sbox_cfa aff_unit   (.in(restored), .out(data_out));
+    isomorphic_mapping_cfa map_unit      (.in(data_in),  .out(mapped));
+    multiplicative_inverter_cfa inv_unit (.in(mapped),   .out(inverted));
+    inverse_mapping_cfa restore_unit     (.in(inverted), .out(restored));
+    affine_transformation_cfa aff_unit   (.in(restored), .out(data_out));
 endmodule
 
-module affine_transformation_sbox_cfa (
+module affine_transformation_cfa (
     input  [7:0] in,
     output [7:0] out
 );
@@ -284,7 +284,7 @@ module affine_transformation_sbox_cfa (
     assign out[7] = in[7] ^ in[3] ^ in[4] ^ in[5] ^ in[6] ^ 1'b0;
 endmodule
 
-module isomorphic_mapping_sbox_cfa (
+module isomorphic_mapping_cfa (
     input  [7:0] in,
     output [7:0] out
 );
@@ -298,7 +298,7 @@ module isomorphic_mapping_sbox_cfa (
     assign out[0] = in[6] ^ in[1] ^ in[0];
 endmodule
 
-module inverse_mapping_sbox_cfa (
+module inverse_mapping_cfa (
     input  [7:0] in,
     output [7:0] out
 );
@@ -312,7 +312,7 @@ module inverse_mapping_sbox_cfa (
     assign out[0] = in[6] ^ in[5] ^ in[4] ^ in[2] ^ in[0];
 endmodule
 
-module multiplicative_inverter_sbox_cfa (
+module multiplicative_inverter_cfa (
     input  [7:0] in,
     output [7:0] out
 );
@@ -331,18 +331,18 @@ module multiplicative_inverter_sbox_cfa (
     assign b_sq_lambda[0] = b_sq[2];
 
     assign b_plus_c = b ^ c; 
-    gf4_multiplier_sbox_cfa mul_inst (.q(c), .a(b_plus_c), .k(c_mul_bplusc));
+    gf4_multiplier_cfa mul_inst (.q(c), .a(b_plus_c), .k(c_mul_bplusc));
     assign combined = b_sq_lambda ^ c_mul_bplusc;
 
-    gf4_inverter_sbox_cfa inv4_inst (.q(combined), .q_inv(combined_inv));
+    gf4_inverter_cfa inv4_inst (.q(combined), .q_inv(combined_inv));
 
-    gf4_multiplier_sbox_cfa mul_high (.q(b), .a(combined_inv), .k(out_h));
-    gf4_multiplier_sbox_cfa mul_low (.q(b_plus_c), .a(combined_inv), .k(out_l));
+    gf4_multiplier_cfa mul_high (.q(b), .a(combined_inv), .k(out_h));
+    gf4_multiplier_cfa mul_low (.q(b_plus_c), .a(combined_inv), .k(out_l));
 
     assign out = {out_h, out_l};
 endmodule
 
-module gf4_multiplier_sbox_cfa (
+module gf4_multiplier_cfa (
     input  [3:0] q, a,
     output [3:0] k
 );
@@ -350,9 +350,9 @@ module gf4_multiplier_sbox_cfa (
     wire [1:0] ah = a[3:2], al = a[1:0];
     wire [1:0] mul_hh, mul_ll, mul_hl_lh, ph_phi;
 
-    gf2_multiplier_sbox_cfa m1 (.q(qh), .a(ah), .k(mul_hh));
-    gf2_multiplier_sbox_cfa m2 (.q(ql), .a(al), .k(mul_ll));
-    gf2_multiplier_sbox_cfa m3 (.q(qh ^ ql), .a(ah ^ al), .k(mul_hl_lh));
+    gf2_multiplier_cfa m1 (.q(qh), .a(ah), .k(mul_hh));
+    gf2_multiplier_cfa m2 (.q(ql), .a(al), .k(mul_ll));
+    gf2_multiplier_cfa m3 (.q(qh ^ ql), .a(ah ^ al), .k(mul_hl_lh));
 
     assign ph_phi[1] = mul_hh[1] ^ mul_hh[0];
     assign ph_phi[0] = mul_hh[1];
@@ -360,7 +360,7 @@ module gf4_multiplier_sbox_cfa (
     assign k = {(mul_hl_lh ^ mul_ll), (ph_phi ^ mul_ll)};
 endmodule
 
-module gf2_multiplier_sbox_cfa (
+module gf2_multiplier_cfa (
     input  [1:0] q, a,
     output [1:0] k
 );
@@ -368,7 +368,7 @@ module gf2_multiplier_sbox_cfa (
     assign k[0] = (q[1] & a[1]) ^ (q[0] & a[0]);
 endmodule
 
-module gf4_inverter_sbox_cfa (
+module gf4_inverter_cfa (
     input  [3:0] q,
     output [3:0] q_inv
 );
@@ -379,4 +379,3 @@ module gf4_inverter_sbox_cfa (
                       (q[2] & q[1] & q[0]) ^ (q[3] & q[0]) ^ (q[3] & q[1]) ^ (q[2] & q[1]) ^ 
                       q[2] ^ q[0] ^ q[1];
 endmodule
-
