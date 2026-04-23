@@ -1,4 +1,3 @@
-
 module aes_operation_opt #(
     parameter MODE = 128
 ) (
@@ -13,217 +12,218 @@ module aes_operation_opt #(
 
     `ifdef AES_256
         localparam Nr = 14;
+        localparam Nk = 8;
     `elsif AES_192
         localparam Nr = 12;
+        localparam Nk = 6;
     `else
         localparam Nr = 10;
+        localparam Nk = 4;
     `endif
 
-    localparam LOAD_CYCLES = MODE / 32;
+    localparam S_IDLE   = 2'd0;
+    localparam S_LOAD   = 2'd1;
+    localparam S_ROUND  = 2'd2;
+    localparam S_OUTPUT = 2'd3;
 
-    localparam S_LOAD = 1'b0;
-    localparam S_CALC = 1'b1;
+    reg [1:0] state, next_state;
+    reg [2:0] word_cnt, next_word_cnt;
+    reg [3:0] round_cnt, next_round_cnt;
 
-    reg state, next_state;
-    reg [3:0] main_ctr, next_main_ctr;
-    reg [1:0] step_count, next_step_count;
-    reg [127:0] state_reg, next_state_reg;
-    reg [MODE-1:0] key_reg, next_key_reg;
-    
-    wire [MODE-1:0] full_new_key  = {key_reg[MODE-33:0], key_in};
-    wire [127:0]    full_new_data = {state_reg[95:0], data_in};
+    reg [127:0] state_reg;
+    reg [(Nk*32)-1:0] key_reg;
+    reg [95:0]  next_state_buffer;
 
-    reg [31:0] current_column;
-    wire [31:0] round_word_out;
+    wire [31:0] shifted_col;
+    wire [31:0] subbytes_out;
+    wire [31:0] mixcolumns_out;
+    wire [31:0] round_data_out;
     wire [31:0] expanded_key_word;
-    wire [31:0] round_key_word;
+    wire [31:0] current_round_key_word;
+    wire [31:0] initial_add_rk_word;
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            state         <= S_LOAD;
-            main_ctr      <= 4'd0;
-            step_count    <= 2'd0;
-            state_reg     <= 128'd0;
-            key_reg       <= {MODE{1'b0}};
-            valid_out     <= 1'b0;
-            data_out      <= 32'd0;
-        end else begin
-            state         <= next_state;
-            main_ctr      <= next_main_ctr;
-            step_count    <= next_step_count;
-            state_reg     <= next_state_reg;
-            key_reg       <= next_key_reg;
-            
-            if (state == S_CALC && main_ctr == Nr) begin
-                valid_out     <= 1'b1;
-                data_out      <= round_word_out;
-            end else begin
-                valid_out     <= 1'b0;
-                data_out      <= 32'd0;
-            end
+    assign shifted_col = 
+        (word_cnt[1:0] == 2'd0) ? {state_reg[127:120], state_reg[87:80],   state_reg[47:40],   state_reg[7:0]} :
+        (word_cnt[1:0] == 2'd1) ? {state_reg[95:88],   state_reg[55:48],   state_reg[15:8],    state_reg[103:96]} :
+        (word_cnt[1:0] == 2'd2) ? {state_reg[63:56],   state_reg[23:16],   state_reg[111:104], state_reg[71:64]} :
+                                  {state_reg[31:24],   state_reg[119:112], state_reg[79:72],   state_reg[39:32]};
+
+    genvar i;
+    generate
+        for (i = 0; i < 4; i = i + 1) begin : sbox_gen
+            aes_sbox_opt u_sbox (
+                .data_in(shifted_col[(i*8) +: 8]),
+                .data_out(subbytes_out[(i*8) +: 8])
+            );
         end
-    end
+    endgenerate
 
-    always @(*) begin
-        next_state      = state;
-        next_main_ctr   = main_ctr;
-        next_step_count = step_count;
-        next_state_reg  = state_reg;
-        next_key_reg    = key_reg;
+    function automatic [7:0] xtime;
+        input [7:0] b;
+        begin
+            xtime = {b[6:0], 1'b0} ^ (b[7] ? 8'h1b : 8'h00);
+        end
+    endfunction
 
-        case (state)
-            S_LOAD: begin
-                if (valid_in) begin
-                    next_key_reg   = full_new_key;
-                    next_state_reg = full_new_data;
+    wire [7:0] sb0 = subbytes_out[31:24];
+    wire [7:0] sb1 = subbytes_out[23:16];
+    wire [7:0] sb2 = subbytes_out[15:8];
+    wire [7:0] sb3 = subbytes_out[7:0];
 
-                    if (main_ctr == LOAD_CYCLES - 1) begin
-                        next_state      = S_CALC;
-                        next_main_ctr   = 4'd1;
-                        next_step_count = 2'd0;
-                        next_state_reg  = full_new_data ^ full_new_key[MODE-1 -: 128];
-                    end else begin
-                        next_main_ctr = main_ctr + 4'd1;
-                    end
-                end
-            end
+    wire [7:0] mc0 = xtime(sb0) ^ xtime(sb1) ^ sb1 ^ sb2 ^ sb3;
+    wire [7:0] mc1 = sb0 ^ xtime(sb1) ^ xtime(sb2) ^ sb2 ^ sb3;
+    wire [7:0] mc2 = sb0 ^ sb1 ^ xtime(sb2) ^ xtime(sb3) ^ sb3;
+    wire [7:0] mc3 = xtime(sb0) ^ sb0 ^ sb1 ^ sb2 ^ xtime(sb3);
 
-            S_CALC: begin
-                case(step_count)
-                    2'd0: begin
-                        next_state_reg[127:120] = round_word_out[31:24];
-                        next_state_reg[87:80]   = round_word_out[23:16];
-                        next_state_reg[47:40]   = round_word_out[15:8];
-                        next_state_reg[7:0]     = round_word_out[7:0];
-                    end
-                    2'd1: begin
-                        next_state_reg[95:88]   = round_word_out[31:24];
-                        next_state_reg[55:48]   = round_word_out[23:16];
-                        next_state_reg[15:8]    = round_word_out[15:8];
-                        next_state_reg[103:96]  = round_word_out[7:0];
-                    end
-                    2'd2: begin
-                        next_state_reg[63:56]   = round_word_out[31:24];
-                        next_state_reg[23:16]   = round_word_out[23:16];
-                        next_state_reg[111:104] = round_word_out[15:8];
-                        next_state_reg[71:64]   = round_word_out[7:0];
-                    end
-                    2'd3: begin
-                        next_state_reg[127:120] = state_reg[127:120];
-                        next_state_reg[119:112] = state_reg[87:80];
-                        next_state_reg[111:104] = state_reg[47:40];
-                        next_state_reg[103:96]  = state_reg[7:0];
-                        
-                        next_state_reg[95:88]   = state_reg[95:88];
-                        next_state_reg[87:80]   = state_reg[55:48];
-                        next_state_reg[79:72]   = state_reg[15:8];
-                        next_state_reg[71:64]   = state_reg[103:96];
-                        
-                        next_state_reg[63:56]   = state_reg[63:56];
-                        next_state_reg[55:48]   = state_reg[23:16];
-                        next_state_reg[47:40]   = state_reg[111:104];
-                        next_state_reg[39:32]   = state_reg[71:64];
-                        
-                        next_state_reg[31:0]    = round_word_out;
-                    end
-                endcase
+    assign mixcolumns_out = {mc0, mc1, mc2, mc3};
 
-                next_key_reg = {key_reg[MODE-33:0], expanded_key_word};
+    `ifdef AES_256
+        assign current_round_key_word = key_reg[127:96];
+        assign initial_add_rk_word = key_reg[127:96];
+    `elsif AES_192
+        assign current_round_key_word = key_reg[63:32];
+        assign initial_add_rk_word = key_reg[63:32];
+    `else
+        assign current_round_key_word = expanded_key_word;
+        assign initial_add_rk_word = key_in;
+    `endif
 
-                if (step_count == 2'd3) begin
-                    next_step_count = 2'd0;
-                    if (main_ctr == Nr) begin
-                        next_state    = S_LOAD;
-                        next_main_ctr = 4'd0;
-                    end else begin
-                        next_main_ctr = main_ctr + 4'd1;
-                    end
-                end else begin
-                    next_step_count = step_count + 2'd1;
-                end
-            end
-            
-            default: next_state = S_LOAD;
-        endcase
-    end
+    assign round_data_out = (round_cnt == Nr) ? (subbytes_out ^ current_round_key_word) : (mixcolumns_out ^ current_round_key_word);
 
-    always @(*) begin
-        case(step_count)
-            2'd0: current_column = {state_reg[127:120], state_reg[87:80],   state_reg[47:40],   state_reg[7:0]};
-            2'd1: current_column = {state_reg[95:88],   state_reg[55:48],   state_reg[15:8],    state_reg[103:96]};
-            2'd2: current_column = {state_reg[63:56],   state_reg[23:16],   state_reg[111:104], state_reg[71:64]};
-            2'd3: current_column = {state_reg[31:24],   state_reg[119:112], state_reg[79:72],   state_reg[39:32]};
-            default: current_column = 32'd0;
-        endcase
-    end
-
-    aes_key_expansion_opt #(MODE) u_key_ext (
-        .round_idx(main_ctr),
-        .step_idx(step_count),
+    aes_key_expansion_opt #(
+        .MODE(Nk * 32)
+    ) key_expand_inst (
+        .round_idx(round_cnt),
+        .step_idx(word_cnt[1:0]),
         .full_key(key_reg),
         .new_word(expanded_key_word)
     );
 
-    `ifdef AES_256
-        assign round_key_word = key_reg[127:96];
-    `elsif AES_192
-        assign round_key_word = key_reg[63:32];
-    `else
-        assign round_key_word = expanded_key_word;
-    `endif
+    always @(*) begin
+        next_state = state;
+        next_word_cnt = word_cnt;
+        next_round_cnt = round_cnt;
 
-    aes_round_opt u_round (
-        .col_in(current_column),
-        .key_in(round_key_word),
-        .is_final_round(main_ctr == Nr),
-        .col_out(round_word_out)
-    );
-endmodule
+        case (state)
+            S_IDLE: begin
+                if (valid_in) begin
+                    next_state = S_LOAD;
+                    next_word_cnt = 3'd1;
+                end
+            end
 
-module aes_round_opt (
-    input  [31:0] col_in,
-    input  [31:0] key_in,
-    input  is_final_round,
-    output [31:0] col_out
-);
-    wire [31:0] sbox_out, mix_out;
+            S_LOAD: begin
+                if (valid_in) begin
+                    if (word_cnt == Nk - 1) begin
+                        next_state = S_ROUND;
+                        next_round_cnt = 4'd1;
+                        next_word_cnt = 3'd0;
+                    end else begin
+                        next_word_cnt = word_cnt + 3'd1;
+                    end
+                end
+            end
 
-    genvar i;
-    generate
-        for (i=0; i<4; i=i+1) begin : sbox_array
-            aes_sbox_opt sb (.data_in(col_in[8*(3-i) +: 8]), .data_out(sbox_out[8*(3-i) +: 8]));
+            S_ROUND: begin
+                if (word_cnt == 3'd3) begin
+                    if (round_cnt == Nr) begin
+                        next_state = S_OUTPUT;
+                        next_word_cnt = 3'd0;
+                    end else begin
+                        next_round_cnt = round_cnt + 4'd1;
+                        next_word_cnt = 3'd0;
+                    end
+                end else begin
+                    next_word_cnt = word_cnt + 3'd1;
+                end
+            end
+
+            S_OUTPUT: begin
+                if (word_cnt == 3'd3) begin
+                    next_state = S_IDLE;
+                    next_word_cnt = 3'd0;
+                end else begin
+                    next_word_cnt = word_cnt + 3'd1;
+                end
+            end
+        endcase
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= S_IDLE;
+            word_cnt <= 3'd0;
+            round_cnt <= 4'd0;
+        end else begin
+            state <= next_state;
+            word_cnt <= next_word_cnt;
+            round_cnt <= next_round_cnt;
         end
-    endgenerate
+    end
 
-    aes_mix_columns_opt mix_u (
-        .data_in(sbox_out),
-        .data_out(mix_out)
-    );
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state_reg <= 128'd0;
+            key_reg <= 0;
+            next_state_buffer <= 96'd0;
+        end else begin
+            case (state)
+                S_IDLE: begin
+                    if (valid_in) begin
+                        `ifndef AES_256
+                        `ifndef AES_192
+                        state_reg <= {state_reg[95:0], data_in ^ initial_add_rk_word};
+                        `endif
+                        `endif
+                        key_reg <= {key_reg[(Nk*32)-33 : 0], key_in};
+                    end
+                end
 
-    assign col_out = is_final_round ? (sbox_out ^ key_in) : (mix_out ^ key_in);
-endmodule
+                S_LOAD: begin
+                    if (valid_in) begin
+                        key_reg <= {key_reg[(Nk*32)-33 : 0], key_in};
+                        if (word_cnt >= Nk - 4) begin
+                            state_reg <= {state_reg[95:0], data_in ^ initial_add_rk_word};
+                        end
+                    end
+                end
 
-module aes_mix_columns_opt (
-    input  [31:0] data_in,
-    output [31:0] data_out
-);
-    wire [7:0] s0, s1, s2, s3, mix_all;
-    assign s0 = data_in[31:24];
-    assign s1 = data_in[23:16];
-    assign s2 = data_in[15:8];
-    assign s3 = data_in[7:0];
+                S_ROUND: begin
+                    key_reg <= {key_reg[(Nk*32)-33 : 0], expanded_key_word};
 
-    function [7:0] xtime(input [7:0] x);
-        begin
-            xtime = {x[6:0], 1'b0} ^ (x[7] ? 8'h1b : 8'h0);
+                    case (word_cnt[1:0])
+                        2'd0: next_state_buffer[95:64] <= round_data_out;
+                        2'd1: next_state_buffer[63:32] <= round_data_out;
+                        2'd2: next_state_buffer[31:0]  <= round_data_out;
+                        2'd3: begin
+                            state_reg[127:96] <= next_state_buffer[95:64];
+                            state_reg[95:64]  <= next_state_buffer[63:32];
+                            state_reg[63:32]  <= next_state_buffer[31:0];
+                            state_reg[31:0]   <= round_data_out;
+                        end
+                    endcase
+                end
+                
+                default: begin end
+            endcase
         end
-    endfunction
+    end
 
-    assign mix_all = s0 ^ s1 ^ s2 ^ s3;
-    assign data_out[31:24] = s0 ^ mix_all ^ xtime(s0 ^ s1);
-    assign data_out[23:16] = s1 ^ mix_all ^ xtime(s1 ^ s2);
-    assign data_out[15:8]  = s2 ^ mix_all ^ xtime(s2 ^ s3);
-    assign data_out[7:0]   = s3 ^ mix_all ^ xtime(s3 ^ s0);
+    always @(*) begin
+        valid_out = 1'b0;
+        data_out = 32'd0;
+        
+        if (state == S_OUTPUT) begin
+            valid_out = 1'b1;
+            case (word_cnt[1:0])
+                2'd0: data_out = state_reg[127:96];
+                2'd1: data_out = state_reg[95:64];
+                2'd2: data_out = state_reg[63:32];
+                2'd3: data_out = state_reg[31:0];
+                default: data_out = 32'd0;
+            endcase
+        end
+    end
 endmodule
 
 module aes_key_expansion_opt #(
@@ -246,7 +246,7 @@ module aes_key_expansion_opt #(
 
     wire [31:0] first_word = full_key[MODE-1 : MODE-32]; 
     wire [31:0] last_word  = full_key[31:0];
-
+    
     wire [31:0] rot_word   = {last_word[23:0], last_word[31:24]};
     
     wire [31:0] sbox_input;
@@ -263,7 +263,7 @@ module aes_key_expansion_opt #(
     aes_sbox_opt ks2 (.data_in(sbox_input[15:8]),  .data_out(sbox_output[15:8]));
     aes_sbox_opt ks3 (.data_in(sbox_input[7:0]),   .data_out(sbox_output[7:0]));
 
-    function [31:0] get_rcon(input [5:0] word_idx);
+    function automatic [31:0] get_rcon(input [5:0] word_idx);
         case(word_idx / Nk)
             6'd1:  get_rcon = 32'h01000000; 6'd2:  get_rcon = 32'h02000000;
             6'd3:  get_rcon = 32'h04000000; 6'd4:  get_rcon = 32'h08000000;
@@ -292,59 +292,59 @@ module aes_sbox_opt (
 );
     wire [7:0] mapped, inverted, restored;
 
-    isomorphic_mapping_opt map_unit      (.in(data_in),  .out(mapped));
-    multiplicative_inverter_opt inv_unit (.in(mapped),   .out(inverted));
-    inverse_mapping_opt restore_unit     (.in(inverted), .out(restored));
-    affine_transformation_opt aff_unit   (.in(restored), .out(data_out));
+    isomorphic_mapping_opt map_unit      (.data_in(data_in),  .data_out(mapped));
+    multiplicative_inverter_opt inv_unit (.data_in(mapped),   .data_out(inverted));
+    inverse_mapping_opt restore_unit     (.data_in(inverted), .data_out(restored));
+    affine_transformation_opt aff_unit   (.data_in(restored), .data_out(data_out));
 endmodule
 
 module affine_transformation_opt (
-    input  [7:0] in,
-    output [7:0] out
+    input  [7:0] data_in,
+    output [7:0] data_out
 );
-    assign out[0] = in[0] ^ in[4] ^ in[5] ^ in[6] ^ in[7] ^ 1'b1;
-    assign out[1] = in[1] ^ in[5] ^ in[6] ^ in[7] ^ in[0] ^ 1'b1;
-    assign out[2] = in[2] ^ in[6] ^ in[7] ^ in[0] ^ in[1] ^ 1'b0;
-    assign out[3] = in[3] ^ in[7] ^ in[0] ^ in[1] ^ in[2] ^ 1'b0;
-    assign out[4] = in[4] ^ in[0] ^ in[1] ^ in[2] ^ in[3] ^ 1'b0;
-    assign out[5] = in[5] ^ in[1] ^ in[2] ^ in[3] ^ in[4] ^ 1'b1;
-    assign out[6] = in[6] ^ in[2] ^ in[3] ^ in[4] ^ in[5] ^ 1'b1;
-    assign out[7] = in[7] ^ in[3] ^ in[4] ^ in[5] ^ in[6] ^ 1'b0;
+    assign data_out[0] = data_in[0] ^ data_in[4] ^ data_in[5] ^ data_in[6] ^ data_in[7] ^ 1'b1;
+    assign data_out[1] = data_in[1] ^ data_in[5] ^ data_in[6] ^ data_in[7] ^ data_in[0] ^ 1'b1;
+    assign data_out[2] = data_in[2] ^ data_in[6] ^ data_in[7] ^ data_in[0] ^ data_in[1] ^ 1'b0;
+    assign data_out[3] = data_in[3] ^ data_in[7] ^ data_in[0] ^ data_in[1] ^ data_in[2] ^ 1'b0;
+    assign data_out[4] = data_in[4] ^ data_in[0] ^ data_in[1] ^ data_in[2] ^ data_in[3] ^ 1'b0;
+    assign data_out[5] = data_in[5] ^ data_in[1] ^ data_in[2] ^ data_in[3] ^ data_in[4] ^ 1'b1;
+    assign data_out[6] = data_in[6] ^ data_in[2] ^ data_in[3] ^ data_in[4] ^ data_in[5] ^ 1'b1;
+    assign data_out[7] = data_in[7] ^ data_in[3] ^ data_in[4] ^ data_in[5] ^ data_in[6] ^ 1'b0;
 endmodule
 
 module isomorphic_mapping_opt (
-    input  [7:0] in,
-    output [7:0] out
+    input  [7:0] data_in,
+    output [7:0] data_out
 );
-    assign out[7] = in[7] ^ in[5];
-    assign out[6] = in[7] ^ in[6] ^ in[4] ^ in[3] ^ in[2] ^ in[1];
-    assign out[5] = in[7] ^ in[5] ^ in[3] ^ in[2];
-    assign out[4] = in[7] ^ in[5] ^ in[3] ^ in[2] ^ in[1];
-    assign out[3] = in[7] ^ in[6] ^ in[2] ^ in[1];
-    assign out[2] = in[7] ^ in[4] ^ in[3] ^ in[2] ^ in[1];
-    assign out[1] = in[6] ^ in[4] ^ in[1];
-    assign out[0] = in[6] ^ in[1] ^ in[0];
+    assign data_out[7] = data_in[7] ^ data_in[5];
+    assign data_out[6] = data_in[7] ^ data_in[6] ^ data_in[4] ^ data_in[3] ^ data_in[2] ^ data_in[1];
+    assign data_out[5] = data_in[7] ^ data_in[5] ^ data_in[3] ^ data_in[2];
+    assign data_out[4] = data_in[7] ^ data_in[5] ^ data_in[3] ^ data_in[2] ^ data_in[1];
+    assign data_out[3] = data_in[7] ^ data_in[6] ^ data_in[2] ^ data_in[1];
+    assign data_out[2] = data_in[7] ^ data_in[4] ^ data_in[3] ^ data_in[2] ^ data_in[1];
+    assign data_out[1] = data_in[6] ^ data_in[4] ^ data_in[1];
+    assign data_out[0] = data_in[6] ^ data_in[1] ^ data_in[0];
 endmodule
 
 module inverse_mapping_opt (
-    input  [7:0] in,
-    output [7:0] out
+    input  [7:0] data_in,
+    output [7:0] data_out
 );
-    assign out[7] = in[7] ^ in[6] ^ in[5] ^ in[1];
-    assign out[6] = in[6] ^ in[2];
-    assign out[5] = in[6] ^ in[5] ^ in[1];
-    assign out[4] = in[6] ^ in[5] ^ in[4] ^ in[2] ^ in[1];
-    assign out[3] = in[5] ^ in[4] ^ in[3] ^ in[2] ^ in[1];
-    assign out[2] = in[7] ^ in[4] ^ in[3] ^ in[2] ^ in[1];
-    assign out[1] = in[5] ^ in[4];
-    assign out[0] = in[6] ^ in[5] ^ in[4] ^ in[2] ^ in[0];
+    assign data_out[7] = data_in[7] ^ data_in[6] ^ data_in[5] ^ data_in[1];
+    assign data_out[6] = data_in[6] ^ data_in[2];
+    assign data_out[5] = data_in[6] ^ data_in[5] ^ data_in[1];
+    assign data_out[4] = data_in[6] ^ data_in[5] ^ data_in[4] ^ data_in[2] ^ data_in[1];
+    assign data_out[3] = data_in[5] ^ data_in[4] ^ data_in[3] ^ data_in[2] ^ data_in[1];
+    assign data_out[2] = data_in[7] ^ data_in[4] ^ data_in[3] ^ data_in[2] ^ data_in[1];
+    assign data_out[1] = data_in[5] ^ data_in[4];
+    assign data_out[0] = data_in[6] ^ data_in[5] ^ data_in[4] ^ data_in[2] ^ data_in[0];
 endmodule
 
 module multiplicative_inverter_opt (
-    input  [7:0] in,
-    output [7:0] out
+    input  [7:0] data_in,
+    output [7:0] data_out
 );
-    wire [3:0] b = in[7:4], c = in[3:0];
+    wire [3:0] b = data_in[7:4], c = data_in[3:0];
     wire [3:0] b_sq, b_sq_lambda, b_plus_c, c_mul_bplusc, combined, combined_inv;
     wire [3:0] out_h, out_l;
 
@@ -367,7 +367,7 @@ module multiplicative_inverter_opt (
     gf4_multiplier_opt mul_high (.q(b), .a(combined_inv), .k(out_h));
     gf4_multiplier_opt mul_low (.q(b_plus_c), .a(combined_inv), .k(out_l));
 
-    assign out = {out_h, out_l};
+    assign data_out = {out_h, out_l};
 endmodule
 
 module gf4_multiplier_opt (
