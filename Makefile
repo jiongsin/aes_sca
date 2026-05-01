@@ -56,10 +56,7 @@ VERDI_FLAGS   = -ssf $(DESIGN_VER).fsdb -dbdir simv.daidir \
 DC_SHELL      = dc_shell 
 DC_FLAGS      = -topo
 VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
-		/data/synopsys/lib/saed14nm/lib/stdcell_hvt/verilog/saed14nm_hvt.v \
-                /data/synopsys/lib/saed14nm/lib/stdcell_rvt/verilog/saed14nm_rvt.v \
-                /data/synopsys/lib/saed14nm/lib/stdcell_lvt/verilog/saed14nm_lvt.v \
-                /data/synopsys/lib/saed14nm/lib/stdcell_slvt/verilog/saed14nm_slvt.v \
+		/data/synopsys/lib/saed32nm/lib/verilog/saed32nm_hvt.v \
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
                 +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
                 -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER).sdf \
@@ -68,7 +65,7 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
                 #/home/host/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
                 #/home/host/libs/saed32nm/lib/verilog/saed32nm.v \
                 #/home/host/libs/saed32nm/lib/verilog/SRAM2RW16x4.v \
-                #/data/synopsys/libsaed32nm/lib/verilog/saed32nm_hvt.v \
+                #/data/synopsys/lib/saed32nm/lib/verilog/saed32nm_hvt.v \
                 #/data/synopsys/lib/saed32nm/lib/verilog/saed32nm_lvt.v \
                 #/data/synopsys/lib/saed32nm/lib/verilog/saed32nm.v \
                 #/data/synopsys/lib/saed32nm/lib/verilog/SRAM2RW16x4.v \
@@ -99,8 +96,8 @@ sim:
 	 -f $(WORKAREA)/verif/tb/tb_filelist.f \
 	 -top $(DESIGN)_tb \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +COUNT=$(TEST_CNT)
-	#@cd $(SIMV_DIR) && \
-	# fsdb2saif $(DESIGN_VER).fsdb -o $(DESIGN_VER).saif
+	@cd $(SIMV_DIR) && \
+	fsdb2saif $(DESIGN_VER).fsdb -o $(DESIGN_VER).saif
 
 verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
