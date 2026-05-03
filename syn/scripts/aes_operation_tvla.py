@@ -148,9 +148,9 @@ def merge_results(results_list):
 
 def perform_tvla():
     cycle_duration = 10 * 1000
-    cycles_per_encryption = 1
+    cycles_per_encryption = 49
     encryption_duration = cycle_duration * cycles_per_encryption
-    start_time = 7 * 1000
+    start_time = 95 * 1000
     resample_dt = 1
 
     common_time_axis = np.arange(0, encryption_duration, resample_dt)
@@ -161,9 +161,9 @@ def perform_tvla():
 
     # MODE 1: QUICK TEST
     print("Running in QUICK TEST mode...")
-    dynamic_files = ['../results/aes_sbox_sca_MODEx_10p0ns/tvla_dynamic/tvla_traces.out']
-    static_files = ['../results/aes_sbox_sca_MODEx_10p0ns/tvla_static/tvla_traces.out']
-    max_traces_per_file = 256 #1000
+    dynamic_files = ['../results/aes_operation_opt_MODE128_10p0ns/tvla_dynamic/tvla_traces.out']
+    static_files = ['../results/aes_operation_opt_MODE128_10p0ns/tvla_static/tvla_traces.out']
+    max_traces_per_file = 1000
     cpu_cores = 2
 
     # MODE 2: FULL CHUNK RUN
