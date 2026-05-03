@@ -21,6 +21,8 @@ module aes_operation_tb;
         `define VER opt
     `elsif AES_DOM
         `define VER dom
+    `elsif AES_SCA
+        `define VER sca
     `endif
 
     `ifdef AES_256

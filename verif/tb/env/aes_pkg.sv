@@ -29,13 +29,15 @@ package aes_pkg;
         endfunction
     endclass
 
-    class aes_sbox_driver;
+class aes_sbox_driver;
         virtual aes_sbox_if vif;
         mailbox gen2drv;
+        event next_item;
 
-        function new(virtual aes_sbox_if vif, mailbox gen2drv);
+        function new(virtual aes_sbox_if vif, mailbox gen2drv, event next_item);
             this.vif = vif;
             this.gen2drv = gen2drv;
+            this.next_item = next_item;
         endfunction
 
         task run();
@@ -51,21 +53,26 @@ package aes_pkg;
     class aes_sbox_monitor;
         virtual aes_sbox_if vif;
         mailbox mon2scb;
+        event next_item;
 
-        function new(virtual aes_sbox_if vif, mailbox mon2scb);
+        function new(virtual aes_sbox_if vif, mailbox mon2scb, event next_item);
             this.vif = vif;
             this.mon2scb = mon2scb;
+            this.next_item = next_item;
         endfunction
 
         task run();
+            @(vif.mon_cb); 
             forever begin
                 aes_sbox_transaction trans;
                 @(vif.mon_cb);
-                #1ns; 
+                
                 trans = new();
-                trans.data_in = vif.data_in;
-                trans.data_out = vif.data_out;
+                trans.data_in = vif.mon_cb.data_in;
+                trans.data_out = vif.mon_cb.data_out;
+                
                 mon2scb.put(trans);
+                ->next_item; 
             end
         endtask
     endclass
@@ -107,7 +114,7 @@ package aes_pkg;
             $display(" Total Transactions : %0d", transaction_count);
             $display(" Mismatches         : %0d", mismatch_count);
             $display(" TEST STATUS        : %s", 
-                    (mismatch_count == 0 && transaction_count == 255) ? "PASSED" : "FAILED");
+                    (mismatch_count == 0 && transaction_count == 256) ? "PASSED" : "FAILED");
             $display("========================================\n");
         endfunction
     endclass

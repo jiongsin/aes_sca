@@ -3,10 +3,12 @@ interface aes_sbox_if(input logic clk);
     logic [7:0] data_out;
     
     clocking drv_cb @(posedge clk);
+        default output #2ns;
         output data_in;
     endclocking
     
     clocking mon_cb @(posedge clk);
+        default input #2ns;
         input data_in;
         input data_out;
     endclocking
@@ -34,14 +36,12 @@ interface aes_operation_if #(parameter MODE = 128) (input logic clk);
 
     logic valid_out;
 
-    // Clocking block for synchronous driving
     clocking drv_cb @(posedge clk);
         default input #3ns output #2ns;
         output valid_in, key_in, data_in;
         input  valid_out, data_out;
     endclocking
 
-    // Clocking block for monitoring
     clocking mon_cb @(posedge clk);
         default input #5ns output #0;
         input valid_in, key_in, data_in;

@@ -13,6 +13,8 @@ module aes_sbox_tb;
         `define VER opt
     `elsif AES_DOM
         `define VER dom
+    `elsif AES_SCA
+        `define VER sca
     `endif
 
     bit clk;
@@ -21,7 +23,7 @@ module aes_sbox_tb;
     
     aes_sbox_if intf(clk);
     
-	`ifdef GLS_SIM
+    `ifdef GLS_SIM
         `define DUTS_TARGET aes_sbox_```VER``
     `else
         `define DUTS_TARGET aes_sbox_```VER``
@@ -33,11 +35,12 @@ module aes_sbox_tb;
     );
     
     initial begin
+        event e_sync;
         mailbox gen2drv = new(1);
         mailbox mon2scb = new();
         
-        aes_sbox_driver     drv = new(intf, gen2drv);
-        aes_sbox_monitor    mon = new(intf, mon2scb);
+        aes_sbox_driver     drv = new(intf, gen2drv, e_sync);
+        aes_sbox_monitor    mon = new(intf, mon2scb, e_sync);
         aes_sbox_scoreboard scb = new(mon2scb);
         
         $display("[%0t] [TOP] Starting AES SBOX Simulation", $time);
@@ -52,12 +55,31 @@ module aes_sbox_tb;
         
         for (int i = 0; i < 256; i++) begin
             aes_sbox_transaction tr = new();
-            tr.data_in = i;
+	    `ifdef TVLA_STATIC
+                tr.data_in = 0;
+            `else
+                tr.data_in = i;
+            `endif
             gen2drv.put(tr);
-            @(posedge clk);
         end
+        
+        wait(scb.transaction_count == 256);
         
         scb.report();
         $finish;
     end
+
+    initial begin
+        if ($test$plusargs("DUMP_VCD")) begin
+            `ifdef TVLA_STATIC
+                $dumpfile("./sim_static/aes_sbox.vcd");
+            `elsif TVLA_DYNAMIC
+                $dumpfile("./sim_dynamic/aes_sbox.vcd");
+            `else
+                $dumpfile("./sim/aes_sbox.vcd");
+            `endif
+            $dumpvars(0, aes_sbox_tb.dut);
+        end
+    end
+
 endmodule

@@ -39,7 +39,7 @@ else
     SYN_SIM      = $(SYN_RES)/sim
     SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER).log
 endif
-SYN_PSIM_TCL = $(SYN_DIR)/scripts/tvla.tcl
+SYN_PSIM_TCL = $(SYN_DIR)/scripts/$(DESIGN)_tvla.tcl
 SYN_NTL      = $(SYN_RES)/$(DESIGN_VER)_ntl.v
 
 # Tools and Flags
@@ -92,8 +92,8 @@ sim:
 	@mkdir -p $(SIM_DIR)/$(DESIGN_VER)
 	@cd $(SIM_DIR) && \
 	 $(VCS) $(VCS_FLAGS) $(VCS_TIME) $(ARGS) \
-	 -f $(WORKAREA)/rtl/rtl_filelist.f \
-	 -f $(WORKAREA)/verif/tb/tb_filelist.f \
+	 -f $(WORKAREA)/rtl/filelist.f \
+	 -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +COUNT=$(TEST_CNT)
 	@cd $(SIMV_DIR) && \
@@ -119,7 +119,7 @@ syn.sim:
 	@mkdir -p $(SYN_SIM)
 	@cd $(SYN_RES) && \
 	 $(VCS) $(VCS_SYN_FLAGS) $(VCS_TIME) $(ARGS) \
-	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/tb_filelist.f \
+	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
 	 +define+TVLA_$(TVLA_CAP)
@@ -133,7 +133,7 @@ syn.verdi:
 syn.psim:
 	@echo "Starting Power Simulation for $(DESIGN_VER)..."
 	@cd $(SYN_DIR) && \
-	 export DESIGN=$(DESIGN)_$(VER) && \
+	 export DESIGN=$(DESIGN) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
 	 export MODE=$(MODE) && \
 	 export TVLA=$(TVLA) && \
