@@ -61,6 +61,7 @@ module aes_sbox_tb;
                 tr.data_in = i;
             `endif
             gen2drv.put(tr);
+	    @(e_sync);
         end
         
         wait(scb.transaction_count == 256);

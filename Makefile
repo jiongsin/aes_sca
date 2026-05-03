@@ -10,9 +10,13 @@ endif
 LIBV        ?= 14
 VER         ?= opt
 VER_CAP      = $(shell echo $(VER) | tr a-z A-Z)
+MODE        ?=
 DESIGN      ?= aes_operation
-DESIGN_VER   = $(DESIGN)_$(VER)_MODE$(MODE)_$(PERIOD_TAG)
-MODE        ?= 128
+ifeq ($(MODE),)
+    DESIGN_VER = $(DESIGN)_$(VER)_$(PERIOD_TAG)
+else
+    DESIGN_VER = $(DESIGN)_$(VER)_MODE$(MODE)_$(PERIOD_TAG)
+endif
 PERIOD      ?= 10.0
 PERIOD_TAG   = $(subst .,p,$(PERIOD))ns
 TEST_CNT    ?= 1000
@@ -22,7 +26,7 @@ TVLA_CAP     = $(shell echo $(TVLA) | tr a-z A-Z)
 # Paths
 VERIF_DIR    = $(WORKAREA)/verif
 VERIF_TB     = $(VERIF_DIR)/tb/$(DESIGN)_tb.sv
-SIM_DIR      = $(WORKAREA)/sim
+SIM_DIR      = $(VERIF_DIR)/sim
 SIMV_DIR     = $(SIM_DIR)/$(DESIGN_VER)
 
 SYN_DIR      = $(WORKAREA)/syn

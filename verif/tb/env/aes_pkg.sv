@@ -29,7 +29,7 @@ package aes_pkg;
         endfunction
     endclass
 
-class aes_sbox_driver;
+    class aes_sbox_driver;
         virtual aes_sbox_if vif;
         mailbox gen2drv;
         event next_item;
@@ -44,8 +44,11 @@ class aes_sbox_driver;
             forever begin
                 aes_sbox_transaction trans;
                 gen2drv.get(trans);
+
                 @(vif.drv_cb);
                 vif.drv_cb.data_in <= trans.data_in;
+
+                ->next_item;
             end
         endtask
     endclass
@@ -61,16 +64,16 @@ class aes_sbox_driver;
             this.next_item = next_item;
         endfunction
 
-        task run();
-            @(vif.mon_cb); 
+	task run();
+            @(vif.mon_cb);
             forever begin
                 aes_sbox_transaction trans;
                 @(vif.mon_cb);
-                
+        
                 trans = new();
-                trans.data_in = vif.mon_cb.data_in;
+                trans.data_in  = vif.mon_cb.data_in;
                 trans.data_out = vif.mon_cb.data_out;
-                
+        
                 mon2scb.put(trans);
                 ->next_item; 
             end
