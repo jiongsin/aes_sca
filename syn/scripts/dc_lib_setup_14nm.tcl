@@ -32,7 +32,7 @@ if {![file isdirectory $mw_design_library ]} {
     }
 open_mw_lib $mw_design_library
 
-check_library > ./reports/dc_check_lib.rpt 
+check_library > ./logs/dc_check_lib.rpt 
 
 set_tlu_plus_files -max_tluplus $TLUPLUS_MAX_FILE \
       -min_tluplus $TLUPLUS_MIN_FILE \

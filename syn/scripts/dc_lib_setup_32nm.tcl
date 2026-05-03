@@ -1,19 +1,13 @@
 ## Set Library Base Path
-set LIB_PATH "/home/host/libs/saed32nm/lib"
+set LIB_PATH "/data/synopsys/lib/saed32nm/lib/"
 
 ## Load Design, Libraries
-set_app_var target_library "saed32lvt_ss0p95v125c.db saed32hvt_ss0p95v125c.db saed32rvt_ss0p95v125c.db"
-set_app_var link_library "* $target_library saed32sram_ss0p95v125c.db"
+set_app_var target_library "saed32hvt_ss0p95v125c.db"
+set_app_var link_library "* $target_library"
 set_app_var search_path "$search_path . ./scripts ../rtl \
- ${LIB_PATH}/stdcell_hvt/db_nldm \
- ${LIB_PATH}/stdcell_lvt/db_nldm \
- ${LIB_PATH}/stdcell_rvt/db_nldm \
- ${LIB_PATH}/sram/db_nldm"
+ ${LIB_PATH}/stdcell_hvt/db_nldm"
 
-set MW_REFERENCE_LIB_DIRS "${LIB_PATH}/stdcell_hvt/milkyway/saed32nm_hvt_1p9m \
-                           ${LIB_PATH}/stdcell_rvt/milkyway/saed32nm_rvt_1p9m \
-                           ${LIB_PATH}/stdcell_lvt/milkyway/saed32nm_lvt_1p9m \
-                           ${LIB_PATH}/sram/milkyway/SRAM32NM"
+set MW_REFERENCE_LIB_DIRS "${LIB_PATH}/stdcell_hvt/milkyway/saed32nm_hvt_1p9m"
 
 set TECH_FILE "${LIB_PATH}/tech/milkyway/saed32nm_1p9m_mw.tf" 
 set MAP_FILE  "${LIB_PATH}/tech/star_rc/saed32nm_tf_itf_tluplus.map"  
@@ -32,7 +26,7 @@ if {![file isdirectory $mw_design_library ]} {
     }
 open_mw_lib $mw_design_library
 
-check_library > ./reports/dc_check_lib.rpt 
+check_library > ./logs/dc_check_lib.rpt 
 
 set_tlu_plus_files -max_tluplus $TLUPLUS_MAX_FILE \
       -min_tluplus $TLUPLUS_MIN_FILE \
