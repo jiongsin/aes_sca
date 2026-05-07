@@ -20,8 +20,10 @@ endif
 PERIOD      ?= 10.0
 PERIOD_TAG   = $(subst .,p,$(PERIOD))ns
 TEST_CNT    ?= 1000
-TVLA        ?=  
+TVLA        ?= none 
 TVLA_CAP     = $(shell echo $(TVLA) | tr a-z A-Z)
+N           ?= 10
+CMD         ?=
 
 # Paths
 VERIF_DIR    = $(WORKAREA)/verif
@@ -80,7 +82,7 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 PT_SHELL      = pt_shell
 
 # Targets
-.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all debug help
+.PHONY: all libv sim verdi sim.verdi syn syn.sim syn.verdi syn.sim.verdi syn.psim syn.sim.psim syn.tvla syn.all repeat debug help
 
 all: sim syn.all
 
@@ -108,6 +110,10 @@ verdi:
 	@cd $(SIMV_DIR) && \
 	 $(VERDI) $(VERDI_FLAGS) 
 
+sim.verdi:
+	$(MAKE) sim
+	$(MAKE) verdi
+
 syn:
 	@echo "Starting Synthesis for $(DESIGN_VER)..."
 	@mkdir -p $(SYN_DIR)/logs
@@ -119,7 +125,7 @@ syn:
 	@cd $(SYN_DIR)/scripts && ppa_report.py
 
 syn.sim:
-	@echo "Starting Pre Layout Simulation for $(DESIGN_VER)..."
+	@echo "Starting Pre-Layout Simulation for $(DESIGN_VER)..."
 	@rm -rf $(SYN_SIM)
 	@mkdir -p $(SYN_SIM)
 	@cd $(SYN_RES) && \
@@ -135,6 +141,11 @@ syn.verdi:
 	@cd $(SYN_SIM) && \
 	 $(VERDI) $(VERDI_FLAGS)
 
+syn.sim.verdi:
+	@echo "Starting Pre-Layout Simulation with Waveform Viewer for $(DESIGN_VER)..."
+	$(MAKE) syn.sim
+	$(MAKE) syn.verdi
+
 syn.psim:
 	@echo "Starting Power Simulation for $(DESIGN_VER)..."
 	@cd $(SYN_DIR) && \
@@ -144,7 +155,16 @@ syn.psim:
 	 export TVLA=$(TVLA) && \
  	 export PERIOD=$(PERIOD) && \
 	 $(PT_SHELL) -f $(SYN_PSIM_TCL) | tee -i $(SYN_PSIM_LOG)
-	@cd $(SYN_DIR) && split -n 16 -d $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out $(SYN_RES)/tvla_$(TVLA)/chunk_ && rm $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out
+	@if [ -f $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out ]; then \
+	 cd $(SYN_DIR) && \
+	 split -n 16 -d $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out $(SYN_RES)/tvla_$(TVLA)/chunk_ && \
+	 rm $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out; \
+	 fi
+
+syn.sim.psim:
+	@echo "Starting Pre-Layout Simulation with Power Simulation for $(DESIGN_VER)..."
+	$(MAKE) syn.sim
+	$(MAKE) syn.psim
 
 syn.tvla:
 	@echo "Starting Leakage Assessment for $(DESIGN_VER)..."
@@ -153,14 +173,22 @@ syn.tvla:
 	 if [ -d venv ]; then source venv/bin/activate; fi && \
 	 python3 $(DESIGN)_tvla.py
 
-syn.all: 
-	@echo "Starting Power Simulation and Leakage Assessment for $(DESIGN_VER)..."
-	$(MAKE) syn
-	$(MAKE) syn.sim TVLA=static
-	$(MAKE) syn.psim TVLA=static
-	$(MAKE) syn.sim TVLA=dynamic
-	$(MAKE) syn.psim TVLA=dynamic
+syn.sim.psim.tvla:
+	@echo "Starting TVLA Test with Power Simulation for $(DESIGN_VER)..."
+	$(MAKE) syn.sim.psim TVLA=static
+	$(MAKE) syn.sim.psim TVLA=dynamic
 	$(MAKE) syn.tvla
+
+syn.all: 
+	@echo "Starting TVLA Test from Synthesis for $(DESIGN_VER)..."
+	$(MAKE) syn
+	$(MAKE) syn.sim.psim.tvla
+
+repeat:
+	@for i in $$(seq 1 $(N)); do \
+		echo "Run $$i"; \
+		$(MAKE) $(CMD); \
+	done
 
 debug:
 	@echo "========================================================"
@@ -170,20 +198,20 @@ debug:
 	@echo " VERSION:      $(VER) ($(VER_CAP))"
 	@echo " MODE:         $(MODE)"
 	@echo " PERIOD:       $(PERIOD) ($(PERIOD_TAG))"
-	@echo " TEST_COUNT:   $(TEST_CNT)"
-	@echo " LIB_VOLTAGE:  $(LIBV)nm"
-	@echo " TVLA_MODE:    $(TVLA) ($(TVLA_CAP))"
+	@echo " TEST COUNT:   $(TEST_CNT)"
+	@echo " TECHNOLOGY:   $(LIBV)nm"
+	@echo " TVLA MODE:    $(TVLA) ($(TVLA_CAP))"
 	@echo ""
 	@echo " DIRECTORIES:"
 	@echo " WORKAREA:     $(WORKAREA)"
-	@echo " SIMV_DIR:     $(SIMV_DIR)"
-	@echo " SYN_RES:      $(SYN_RES)"
-	@echo " SYN_SIM:      $(SYN_SIM)"
+	@echo " SIMV DIR:     $(SIMV_DIR)"
+	@echo " SYN RESULTS:  $(SYN_RES)"
+	@echo " SYN SIM DIR:  $(SYN_SIM)"
 	@echo ""
-	@echo " OUTPUT FILES:"
-	@echo " SYN_NTL:      $(SYN_NTL)"
-	@echo " SYN_LOG:      $(SYN_LOG)"
-	@echo " SYN_PSIM_LOG: $(SYN_PSIM_LOG)"
+	@echo " DERIVED PATHS:"
+	@echo " DESIGN VER:   $(DESIGN_VER)"
+	@echo " SYN LOG:      $(SYN_LOG)"
+	@echo " PSIM LOG:     $(SYN_PSIM_LOG)"
 	@echo "========================================================"
 
 help:
@@ -192,30 +220,33 @@ help:
 	@echo "========================================================================"
 	@echo " USAGE: make [target] [VARIABLES]"
 	@echo ""
-	@echo " SETUP TARGETS:"
-	@echo "  libv           : Copy library setup files (Use LIBV=14 or LIBV=32)"
+	@echo " SETUP"
+	@echo "  libv           : Copy library setup files (LIBV=14 or 32)"
 	@echo ""
-	@echo " SIMULATION TARGETS:"
-	@echo "  sim            : Run RTL simulation and generate FSDB/SAIF"
-	@echo "  verdi          : Open Verdi for RTL simulation waveforms"
+	@echo " RTL FLOW"
+	@echo "  sim            : Run RTL simulation"
+	@echo "  verdi          : Open Verdi for RTL"
+	@echo "  sim.verdi      : Run simulation then open Verdi"
 	@echo ""
-	@echo " SYNTHESIS AND POWER TARGETS:"
+	@echo " SYNTHESIS FLOW"
 	@echo "  syn            : Run Design Compiler synthesis"
-	@echo "  syn.sim        : Run Gate Level Simulation (GLS) with SDF"
+	@echo "  syn.sim        : Run Gate Level Simulation"
+	@echo "  syn.verdi      : Open Verdi for Gate Level"
+	@echo "  syn.sim.verdi  : Run GLS then open Verdi"
+	@echo ""
+	@echo " POWER AND TVLA"
 	@echo "  syn.psim       : Run PrimeTime PX power analysis"
-	@echo "  syn.tvla       : Run Leakage Assessment script"
-	@echo "  syn.all        : Run full flow (syn + static/dynamic sim + tvla)"
+	@echo "  syn.sim.psim   : Run GLS then power analysis"
+	@echo "  syn.tvla       : Run Python Leakage Assessment"
+	@echo "  syn.all        : Run full flow (Syn, Static, Dynamic, TVLA)"
 	@echo ""
-	@echo " DEBUGGING:"
-	@echo "  debug          : Print all current Makefile variables"
+	@echo " TOOLS"
+	@echo "  debug          : Print current variables"
+	@echo "  help           : Show this menu"
 	@echo ""
-	@echo " VARIABLES:"
-	@echo "  MODE=128|192|256   : AES key size [Default: 128]"
-	@echo "  PERIOD=val         : Clock period in ns [Default: 10.0]"
-	@echo "  LIBV=14|32         : Library technology node [Default: 14]"
-	@echo "  TVLA=normal|static : Assessment mode [Default: normal]"
-	@echo ""
-	@echo " EXAMPLES:"
-	@echo "  make syn.all MODE=256 PERIOD=2.0"
-	@echo "  make syn.psim TVLA=static"
+	@echo " VARIABLES"
+	@echo "  MODE=128|192|256   : AES key size"
+	@echo "  PERIOD=value       : Clock period in ns"
+	@echo "  LIBV=14|32         : Tech node"
+	@echo "  TVLA=static|dynamic: Power analysis type"
 	@echo "========================================================================"

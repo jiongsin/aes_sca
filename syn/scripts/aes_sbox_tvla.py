@@ -199,7 +199,15 @@ def perform_tvla():
     max_traces_per_file = None
     cpu_cores = 16
 
-    output_filename = f'{WORKAREA}/syn/{DESIGN_VER}_tvla_analysis.png'
+    # Create safe file name with auto numbers
+    base_output = f'{WORKAREA}/syn/{DESIGN_VER}_tvla_analysis'
+    extension = '.png'
+    output_filename = f'{base_output}{extension}'
+    
+    counter = 1
+    while os.path.exists(output_filename):
+        output_filename = f'{base_output}_{counter}{extension}'
+        counter += 1
 
     # ==========================================
 

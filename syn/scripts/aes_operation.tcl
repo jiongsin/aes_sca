@@ -38,32 +38,65 @@ source -echo -verbose ./scripts/constraints/aes_operation_cons.tcl
 # =====================================================================
 # 2.5 SCA PRESERVATION CONSTRAINTS (CRITICAL)
 # =====================================================================
-echo "Applying Side-Channel Security Constraints..."
+echo "Applying Side Channel Security Constraints..."
 
-# Prevent the tool from optimizing away our masked AND gates
-if {[sizeof_collection [get_designs -quiet *dom_and_sca*]] > 0} {
+if { $version == "sca" } {
+    # 1. Protect DOM AND Gates
     set_ungroup [get_designs *dom_and_sca*] false
     set_boundary_optimization [get_designs *dom_and_sca*] false
+    
+    # Stop constants from sneaking through the boundary
+    set_app_var compile_enable_constant_propagation_with_no_boundary_opt false
+    
+    # Protect combinational nets inside DOM
     set_dont_touch [get_nets -hierarchical *cross_*_comb*]
-    set_dont_touch [get_nets -hierarchical *inner_*]
-}
+    set_dont_touch [get_nets -hierarchical *inner_0*]
+    set_dont_touch [get_nets -hierarchical *inner_1*]
 
-# Protect the random bit masks from being mathematically optimized away
-if { $version == "sca" } {
-    set_dont_touch [get_nets -hierarchical *mask_data*]
-    set_dont_touch [get_nets -hierarchical *mask_key*]
-    set_dont_touch [get_ports *random_bits*]
+    # 2. Protect Logic Boundaries and Masks
+    # Protect the random numbers
+    set_dont_touch [get_nets *random_bits*]
+    set_dont_touch [get_nets -hierarchical *data_mask*]
+    set_dont_touch [get_nets -hierarchical *key_mask*]
+    
+    # Protect initial masking boundaries
+    set_dont_touch [get_nets -hierarchical *masked_key_in_0*]
+    set_dont_touch [get_nets -hierarchical *masked_key_in_1*]
+
+    # Protect Sbox boundaries
+    set_dont_touch [get_nets -hierarchical *subbytes_out_0*]
+    set_dont_touch [get_nets -hierarchical *subbytes_out_1*]
+
+    # Protect MixColumns and Round logic boundaries
     set_dont_touch [get_nets -hierarchical *mixcolumns_out_0*]
     set_dont_touch [get_nets -hierarchical *mixcolumns_out_1*]
     set_dont_touch [get_nets -hierarchical *round_data_out_0*]
     set_dont_touch [get_nets -hierarchical *round_data_out_1*]
-    set_dont_touch [get_nets -hierarchical *perm_table*]
-    set_dont_touch [get_nets -hierarchical *cur_col_idx*]
+
+    # Protect key expansion boundaries
+    set_dont_touch [get_nets -hierarchical *expanded_key_word_0*]
+    set_dont_touch [get_nets -hierarchical *expanded_key_word_1*]
+
+    # 3. Protect Sbox Math Blocks
+    set_ungroup [get_designs *aes_sbox_sca*] false
+    set_ungroup [get_designs *isomorphic_mapping_sca*] false
+    set_ungroup [get_designs *multiplicative_inverter_sca*] false
+    set_ungroup [get_designs *inverse_mapping_sca*] false
+    set_ungroup [get_designs *affine_transformation_sca*] false
 }
+
+# 4. Global Security Settings
+# Stop multibit register packing
+set_app_var hdlin_infer_multibit default_none
+
+# Keep the state machine exactly as written
+set_app_var fsm_auto_inferring false
+set_app_var fsm_enable_state_minimization false
 
 # Disable aggressive register merging globally
 set_optimize_registers false
 set_app_var compile_enable_register_merging false
+set_register_merging [all_registers] false
 
 # =====================================================================
 # 3. OPTIMIZATION
@@ -77,12 +110,9 @@ set run_name "${rtl_top}_MODE${mode}_${period}ns"
 read_saif -input ../verif/sim/${run_name}/${run_name}.saif \
     -instance_name aes_operation_tb/dut
 
-set_register_merging [all_registers] false
-
 set_cost_priority -delay
 set_dynamic_optimization true
 set_leakage_optimization true
-set_app_var compile_enable_constant_propagation_with_no_boundary_opt false
 
 # set_clock_gating_style -minimum_bitwidth 4 -control_point before -positive_edge_logic {integrated}
 
