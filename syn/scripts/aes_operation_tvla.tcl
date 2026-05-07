@@ -4,13 +4,13 @@ source ./scripts/pt_lib_setup.tcl
 set_app_var power_enable_analysis true
 
 set DESIGN $env(DESIGN)
+set VER $env(VER)
 set MODE $env(MODE)
-set PERIOD $env(PERIOD)
 set TVLA $env(TVLA)
-set NTL ${DESIGN}_MODE${MODE}
+set NTL ${DESIGN}_${VER}_MODE${MODE}
 set DESIGN_VER $env(DESIGN_VER)
 
-file mkdir ./results/${DESIGN}_MODE${MODE}_10p0ns/tvla_${TVLA}
+file mkdir ./results/${DESIGN_VER}/tvla_${TVLA}
 
 read_verilog ${DESIGN_VER}_ntl.v
 link_design ${NTL}
@@ -27,11 +27,9 @@ read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}.sdf
 set_app_var power_analysis_mode time_based
 
 read_fsdb ./results/${DESIGN_VER}/sim_${TVLA}/${DESIGN_VER}.fsdb \
-    -strip_path aes_operation_tb/dut \
-    -time {95 490085}
+    -strip_path aes_operation_tb/dut
 # read_vcd ./results/${DESIGN_VER}/sim_${TVLA}/aes_operation.vcd \
-    -strip_path aes_operation_tb/dut \
-    -time {95 490085}
+    -strip_path aes_operation_tb/dut
 
 # Check and Report Activity
 report_switching_activity > ./results/${DESIGN_VER}/tvla_${TVLA}/switching_activity.rpt

@@ -5,14 +5,16 @@ set_app_var power_enable_analysis true
 
 set DESIGN $env(DESIGN)
 set VER $env(VER)
+set MODE $env(MODE)
 set TVLA $env(TVLA)
+set NTL ${DESIGN}_${VER}
 set DESIGN_VER $env(DESIGN_VER)
 
 file mkdir ./results/${DESIGN_VER}/tvla_${TVLA}
 
 read_verilog ${DESIGN_VER}_ntl.v
-link_design ${DESIGN}_${VER}
-current_design ${DESIGN}_${VER}
+link_design ${NTL}
+current_design ${NTL}
 
 # Define Constraint
 create_clock -name v_clk -period 10.0
@@ -24,12 +26,9 @@ read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}.sdf
 set_app_var power_analysis_mode time_based
 
 read_fsdb ./results/${DESIGN_VER}/sim_${TVLA}/${DESIGN_VER}.fsdb \
-    -strip_path ${DESIGN}_tb/dut \
-    -time {7 2547}
-    #{95 490085}
+    -strip_path ${DESIGN}_tb/dut
 # read_vcd ./results/${DESIGN_VER}/sim_${TVLA}/aes_operation.vcd \
-    -strip_path aes_operation_tb/dut \
-    -time {95 490085}
+    -strip_path aes_operation_tb/dut
 
 # Check and Report Activity
 report_switching_activity > ./results/${DESIGN_VER}/tvla_${TVLA}/switching_activity.rpt

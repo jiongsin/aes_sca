@@ -12,3 +12,4 @@ set_app_var search_path "$search_path . ./scripts $SYN_NTL \
  ${LIB_PATH}/stdcell_rvt/db_nldm \
  ${LIB_PATH}/sram/db_nldm"
 
+set_host_options -max_cores 8

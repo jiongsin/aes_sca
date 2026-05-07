@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 import sys
 import glob
 import concurrent.futures
+import os
 
 def process_trace_file(filename, start_time, encryption_duration, common_time_axis, label, max_traces=None):
     n = 0
@@ -17,11 +18,13 @@ def process_trace_file(filename, start_time, encryption_duration, common_time_ax
 
     times = []
     values = []
-    last_resampled = None  # Holds the data from the previous cycle
+    last_resampled = None
+
+    current_time = None
+    current_sum = 0.0
 
     try:
         with open(filename, 'r') as f:
-            current_time = None
             for line in f:
                 line = line.strip()
 
@@ -30,15 +33,21 @@ def process_trace_file(filename, start_time, encryption_duration, common_time_ax
 
                 parts = line.split()
 
+                # We hit a new timestamp
                 if len(parts) == 1 and parts[0].isdigit():
-                    current_time = int(parts[0])
+                    new_time = int(parts[0])
 
-                    while current_time > current_end:
+                    # Save the fully summed values from the previous timestamp
+                    if current_time is not None:
+                        times.append(current_time)
+                        values.append(current_sum)
+
+                    # Check if the new time crosses into the next cycle
+                    while new_time > current_end:
                         trace_processed = False
                         just_processed_real_data = False
 
                         if len(times) > 1:
-                            # We have actual data for this time window
                             t_arr = np.array(times)
                             v_arr = np.array(values)
 
@@ -50,20 +59,25 @@ def process_trace_file(filename, start_time, encryption_duration, common_time_ax
                             v_unique = v_arr[unique_indices]
 
                             if len(t_rel_unique) > 1:
-                                func = interp1d(t_rel_unique, v_unique, kind='previous', fill_value="extrapolate", bounds_error=False)
+                                # Safe interpolation that stops Not A Number errors
+                                func = interp1d(
+                                    t_rel_unique, 
+                                    v_unique, 
+                                    kind='previous', 
+                                    fill_value=(v_unique[0], v_unique[-1]), 
+                                    bounds_error=False
+                                )
                                 resampled = func(common_time_axis)
-                                last_resampled = resampled.copy() # Save it for the future
+                                last_resampled = resampled.copy()
                                 trace_processed = True
                                 just_processed_real_data = True
                                 
                         elif last_resampled is not None:
-                            # NO data in this window! Copy the previous cycle.
                             resampled = last_resampled
                             trace_processed = True
 
                         if trace_processed:
                             n += 1
-                            
                             if max_traces is not None and n % 50 == 0:
                                 percent = int((n / max_traces) * 100)
                                 print(f"[{label}] Trace status: {n}/{max_traces} [{percent}%]")
@@ -79,23 +93,32 @@ def process_trace_file(filename, start_time, encryption_duration, common_time_ax
                         current_start += encryption_duration
                         current_end += encryption_duration
 
-                        # Only reset the buffer if we actually consumed real data
+                        # Reset the buffer for the next trace
                         if just_processed_real_data:
                             times = [last_t_carry]
                             values = [last_v_carry]
+                        else:
+                            times = []
+                            values = []
 
                     if max_traces is not None and n >= max_traces:
                         break
 
+                    current_time = new_time
+                    current_sum = 0.0
+
+                # Accumulate values for all nodes at the current timestamp
                 elif len(parts) >= 2 and current_time is not None:
                     try:
-                        times.append(current_time)
-                        values.append(float(parts[1]))
-                        current_time = None
+                        current_sum += float(parts[1])
                     except ValueError:
                         pass
 
-        # EOF CHECK: If the file ended early, pad it out by copying the last trace
+        # Save the very last time entry when the file ends
+        if current_time is not None:
+            times.append(current_time)
+            values.append(current_sum)
+
         if max_traces is not None and n < max_traces and last_resampled is not None:
             print(f"\n[{label}] EOF reached at {n} traces. Padding missing cycles up to {max_traces}...")
             while n < max_traces:
@@ -148,30 +171,35 @@ def merge_results(results_list):
 
 def perform_tvla():
     cycle_duration = 10 * 1000
-    cycles_per_encryption = 1
+    cycles_per_encryption = 5
     encryption_duration = cycle_duration * cycles_per_encryption
     start_time = 7 * 1000
     resample_dt = 1
 
     common_time_axis = np.arange(0, encryption_duration, resample_dt)
 
-    # ==========================================
-    # CHOOSE YOUR MODE HERE
-    # ==========================================
+    WORKAREA = os.environ.get('WORKAREA')
+    DESIGN_VER = os.environ.get('DESIGN_VER')
+    SYN_RES = f'{WORKAREA}/syn/results/{DESIGN_VER}'
 
-    # MODE 1: QUICK TEST
-    print("Running in QUICK TEST mode...")
-    dynamic_files = ['../results/aes_sbox_sca_MODEx_10p0ns/tvla_dynamic/tvla_traces.out']
-    static_files = ['../results/aes_sbox_sca_MODEx_10p0ns/tvla_static/tvla_traces.out']
-    max_traces_per_file = 256 #1000
-    cpu_cores = 2
+    if DESIGN_VER:
+        print(f"DESIGN_VER : {DESIGN_VER}")
+    else:
+        print("DESIGN_VER is not set!")
 
-    # MODE 2: FULL CHUNK RUN
-    # print("Running in FULL CHUNK mode...")
-    # dynamic_files = glob.glob('dynamic_chunks/*')
-    # static_files = glob.glob('static_chunks/*')
-    # max_traces_per_file = None
-    # cpu_cores = 8
+    '''
+    split -n 16 -d {SYN_RES}/tvla_dynamic/tvla_traces.out ../results/aes_operation_sca_MODE128_10p0ns/tvla_dynamic/chunk_
+    split -n 16 -d {SYN_RES}/tvla_static/tvla_traces.out ../results/aes_operation_sca_MODE128_10p0ns/tvla_static/chunk_
+    '''
+    # nproc OR lscpu
+
+    print("Running in FULL CHUNK mode...")
+    dynamic_files = glob.glob(f'{SYN_RES}/tvla_dynamic/chunk_*')
+    static_files = glob.glob(f'{SYN_RES}/tvla_static/chunk_*')
+    max_traces_per_file = None
+    cpu_cores = 16
+
+    output_filename = f'{WORKAREA}/syn/{DESIGN_VER}_tvla_analysis.png'
 
     # ==========================================
 
@@ -216,21 +244,21 @@ def perform_tvla():
 
     print("Computing Welch t test...")
     t_stats = (mean_r - mean_f) / np.sqrt((var_r / n_r) + (var_f / n_f) + 1e-12)
+    time_axis_ns = common_time_axis / 1000.0
 
     print("Generating plot...")
     plt.figure(figsize=(10, 6))
-    plt.plot(common_time_axis, t_stats, label='t value', linewidth=1)
-
+    plt.plot(time_axis_ns, t_stats, label='t value', linewidth=0.5)
+    
     plt.axhline(4.5, color='red', linestyle='--', alpha=0.7, label='Threshold (+4.5)')
     plt.axhline(-4.5, color='red', linestyle='--', alpha=0.7, label='Threshold (-4.5)')
 
-    plt.title('TVLA Analysis Results')
-    plt.xlabel('Time (ps)')
+    plt.title(f'TVLA Analysis Results for {DESIGN_VER}')
+    plt.xlabel('Time (ns)')
     plt.ylabel('t value')
     plt.legend()
     plt.grid(True, alpha=0.3)
 
-    output_filename = 'tvla_analysis.png'
     plt.savefig(output_filename, dpi=150)
 
     max_t = np.max(np.abs(t_stats))

@@ -7,7 +7,7 @@ ifndef WORKAREA
     $(error ERROR: WORKAREA is not set. Please 'export WORKAREA=/path/to/project' first)
 endif
 
-LIBV        ?= 14
+LIBV        ?= 32
 VER         ?= opt
 VER_CAP      = $(shell echo $(VER) | tr a-z A-Z)
 MODE        ?=
@@ -20,7 +20,7 @@ endif
 PERIOD      ?= 10.0
 PERIOD_TAG   = $(subst .,p,$(PERIOD))ns
 TEST_CNT    ?= 1000
-TVLA        ?= normal 
+TVLA        ?=  
 TVLA_CAP     = $(shell echo $(TVLA) | tr a-z A-Z)
 
 # Paths
@@ -35,10 +35,10 @@ SYN_LOG      = $(SYN_DIR)/logs/$(DESIGN_VER).log
 SYN_RES      = $(SYN_DIR)/results/$(DESIGN_VER)
 ifeq ($(TVLA),static)
     SYN_SIM      = $(SYN_RES)/sim_static
-    SYN_PSIM_LOG = $(SYN_DIR)/logs/tvla_static.log
+    SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER)_tvla_static.log
 else ifeq ($(TVLA),dynamic)
     SYN_SIM      = $(SYN_RES)/sim_dynamic
-    SYN_PSIM_LOG = $(SYN_DIR)/logs/tvla_dynamic.log
+    SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER)_tvla_dynamic.log
 else 
     SYN_SIM      = $(SYN_RES)/sim
     SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER).log
@@ -60,7 +60,7 @@ VERDI_FLAGS   = -ssf $(DESIGN_VER).fsdb -dbdir simv.daidir \
 DC_SHELL      = dc_shell 
 DC_FLAGS      = -topo
 VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
-		/data/synopsys/lib/saed32nm/lib/verilog/saed32nm_hvt.v \
+		/data/synopsys/lib/saed$(LIBV)nm/lib/verilog/saed$(LIBV)nm_hvt.v \
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
                 +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
                 -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER).sdf \
@@ -80,9 +80,9 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 PT_SHELL      = pt_shell
 
 # Targets
-.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla debug help
+.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all debug help
 
-all: sim syn syn.sim
+all: sim syn.all
 
 libv:
 	@cp syn/scripts/dc_lib_setup_$(LIBV)nm.tcl syn/scripts/dc_lib_setup.tcl
@@ -116,6 +116,7 @@ syn:
 	 export period=$(PERIOD) && \
 	 export version=$(VER) && \
 	 $(DC_SHELL) $(DC_FLAGS) -f $(SYN_TCL) | tee -i $(SYN_LOG)
+	@cd $(SYN_DIR)/scripts && ppa_report.py
 
 syn.sim:
 	@echo "Starting Pre Layout Simulation for $(DESIGN_VER)..."
@@ -126,7 +127,7 @@ syn.sim:
 	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
-	 +define+TVLA_$(TVLA_CAP)
+	 +define+TVLA_$(TVLA_CAP) +notimingchecks +xprop=tmerge
 	 # +DUMP_VCD
 
 syn.verdi:
@@ -143,61 +144,78 @@ syn.psim:
 	 export TVLA=$(TVLA) && \
  	 export PERIOD=$(PERIOD) && \
 	 $(PT_SHELL) -f $(SYN_PSIM_TCL) | tee -i $(SYN_PSIM_LOG)
+	@cd $(SYN_DIR) && split -n 16 -d $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out $(SYN_RES)/tvla_$(TVLA)/chunk_ && rm $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out
 
-syn.tvla: 
+syn.tvla:
 	@echo "Starting Leakage Assessment for $(DESIGN_VER)..."
+	@export DESIGN_VER=$(DESIGN_VER) && \
+	 cd $(SYN_DIR)/scripts && \
+	 if [ -d venv ]; then source venv/bin/activate; fi && \
+	 python3 $(DESIGN)_tvla.py
+
+syn.all: 
+	@echo "Starting Power Simulation and Leakage Assessment for $(DESIGN_VER)..."
+	$(MAKE) syn
 	$(MAKE) syn.sim TVLA=static
 	$(MAKE) syn.psim TVLA=static
 	$(MAKE) syn.sim TVLA=dynamic
 	$(MAKE) syn.psim TVLA=dynamic
+	$(MAKE) syn.tvla
 
 debug:
-	@echo "--------------------------------------------------------"
+	@echo "========================================================"
 	@echo " Makefile Variable Debug"
-	@echo "--------------------------------------------------------"
-	@echo "VER:          $(VER)"
-	@echo "VER_CAP:      $(VER_CAP)"
-	@echo "DESIGN:       $(DESIGN)"
-	@echo "DESIGN_VER:   $(DESIGN_VER)"
-	@echo "MODE:         $(MODE)"
-	@echo "PERIOD:       $(PERIOD) ($(PERIOD_TAG))"
-	@echo "TEST_CNT:     $(TEST_CNT)"
-	@echo "TVLA:         $(TVLA)"
+	@echo "========================================================"
+	@echo " DESIGN:       $(DESIGN)"
+	@echo " VERSION:      $(VER) ($(VER_CAP))"
+	@echo " MODE:         $(MODE)"
+	@echo " PERIOD:       $(PERIOD) ($(PERIOD_TAG))"
+	@echo " TEST_COUNT:   $(TEST_CNT)"
+	@echo " LIB_VOLTAGE:  $(LIBV)nm"
+	@echo " TVLA_MODE:    $(TVLA) ($(TVLA_CAP))"
 	@echo ""
-	@echo "VERIF_DIR:    $(VERIF_DIR)"
-	@echo "VERIF_TB:     $(VERIF_TB)"
-	@echo "SIM_DIR:      $(SIM_DIR)"
-	@echo "SIMV_DIR:     $(SIMV_DIR)"
+	@echo " DIRECTORIES:"
+	@echo " WORKAREA:     $(WORKAREA)"
+	@echo " SIMV_DIR:     $(SIMV_DIR)"
+	@echo " SYN_RES:      $(SYN_RES)"
+	@echo " SYN_SIM:      $(SYN_SIM)"
 	@echo ""
-	@echo "SYN_DIR:      $(SYN_DIR)"
-	@echo "SYN_TCL:      $(SYN_TCL)"
-	@echo "SYN_LOG:      $(SYN_LOG)"
-	@echo "SYN_RES:      $(SYN_RES)"
-	@echo "SYN_SIM:      $(SYN_SIM)"
-	@echo "SYN_PSIM_TCL: $(SYN_PSIM_TCL)"
-	@echo "SYN_PSIM_LOG: $(SYN_PSIM_LOG)"
-	@echo "SYN_NTL:      $(SYN_NTL)"
-	@echo "--------------------------------------------------------"
+	@echo " OUTPUT FILES:"
+	@echo " SYN_NTL:      $(SYN_NTL)"
+	@echo " SYN_LOG:      $(SYN_LOG)"
+	@echo " SYN_PSIM_LOG: $(SYN_PSIM_LOG)"
+	@echo "========================================================"
 
 help:
 	@echo "========================================================================"
-	@echo "   AES Design Automation Environment - Help Menu"
+	@echo " AES Design Automation Environment Help"
 	@echo "========================================================================"
-	@echo " Usage: make [target] [VARIABLES]"
+	@echo " USAGE: make [target] [VARIABLES]"
 	@echo ""
-	@echo " TARGETS:"
-	@echo "   sim           : Compile and run simulation (generates FSDB)"
-	@echo "   verdi         : Open Verdi GUI to view waveforms"
-	@echo "   syn           : Run Design Compiler synthesis"
-	@echo "   all           : Run sim verdi syn"
+	@echo " SETUP TARGETS:"
+	@echo "  libv           : Copy library setup files (Use LIBV=14 or LIBV=32)"
+	@echo ""
+	@echo " SIMULATION TARGETS:"
+	@echo "  sim            : Run RTL simulation and generate FSDB/SAIF"
+	@echo "  verdi          : Open Verdi for RTL simulation waveforms"
+	@echo ""
+	@echo " SYNTHESIS AND POWER TARGETS:"
+	@echo "  syn            : Run Design Compiler synthesis"
+	@echo "  syn.sim        : Run Gate Level Simulation (GLS) with SDF"
+	@echo "  syn.psim       : Run PrimeTime PX power analysis"
+	@echo "  syn.tvla       : Run Leakage Assessment script"
+	@echo "  syn.all        : Run full flow (syn + static/dynamic sim + tvla)"
+	@echo ""
+	@echo " DEBUGGING:"
+	@echo "  debug          : Print all current Makefile variables"
 	@echo ""
 	@echo " VARIABLES:"
-	@echo "   MODE=128      : Set AES mode (Options: 128, 192, 256) [Default: 128]"
-	@echo "   PERIOD=10.0   : Set clock period for synthesis [Default: 10.0]"
-	@echo "   DESIGN=X  : Override the top module name [Default: aes_operation]"
+	@echo "  MODE=128|192|256   : AES key size [Default: 128]"
+	@echo "  PERIOD=val         : Clock period in ns [Default: 10.0]"
+	@echo "  LIBV=14|32         : Library technology node [Default: 14]"
+	@echo "  TVLA=normal|static : Assessment mode [Default: normal]"
 	@echo ""
 	@echo " EXAMPLES:"
-	@echo "   make sim MODE=256              -> Run AES-256 simulation"
-	@echo "   make syn MODE=192 PERIOD=5.0   -> Synthesize AES-192 at 200MHz"
-	@echo "   make verdi                     -> Open Verdi for the last sim run"
+	@echo "  make syn.all MODE=256 PERIOD=2.0"
+	@echo "  make syn.psim TVLA=static"
 	@echo "========================================================================"

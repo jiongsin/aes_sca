@@ -22,3 +22,5 @@ set_app_var link_library "* $target_library"
 set SYN_NTL [glob -nocomplain -type d ./results/*]
 set_app_var search_path "$search_path . ./scripts $SYN_NTL \
  ${LIB_PATH}/stdcell_hvt/db_nldm"
+
+set_host_options -max_cores 8

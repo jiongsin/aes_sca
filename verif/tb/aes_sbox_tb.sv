@@ -30,6 +30,10 @@ module aes_sbox_tb;
     `endif
 
     `DUTS_TARGET dut (
+	`ifdef AES_SCA
+        .clk(clk),
+	.random_bits (intf.random_bits),
+        `endif
         .data_in (intf.data_in),
         .data_out(intf.data_out)
     );
@@ -60,14 +64,14 @@ module aes_sbox_tb;
             `else
                 tr.data_in = i;
             `endif
+
+	    `ifdef AES_SCA
+                if(!std::randomize(tr.random_bits)) $fatal("Randomization failed");
+            `endif
+
             gen2drv.put(tr);
 	    @(e_sync);
         end
-        
-        wait(scb.transaction_count == 256);
-        
-        scb.report();
-        $finish;
     end
 
     initial begin

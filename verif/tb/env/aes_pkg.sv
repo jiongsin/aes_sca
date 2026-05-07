@@ -23,6 +23,9 @@ package aes_pkg;
 
     class aes_sbox_transaction;
         rand bit [7:0] data_in;
+	`ifdef AES_SCA
+	rand bit [35:0] random_bits;
+        `endif
         bit [7:0] data_out;
         
         function new();
@@ -47,13 +50,16 @@ package aes_pkg;
 
                 @(vif.drv_cb);
                 vif.drv_cb.data_in <= trans.data_in;
-
+		`ifdef AES_SCA
+		vif.drv_cb.random_bits <= trans.random_bits;
+                repeat(4) @(vif.drv_cb);
+		`endif
                 ->next_item;
             end
         endtask
     endclass
 
-    class aes_sbox_monitor;
+class aes_sbox_monitor;
         virtual aes_sbox_if vif;
         mailbox mon2scb;
         event next_item;
@@ -64,18 +70,20 @@ package aes_pkg;
             this.next_item = next_item;
         endfunction
 
-	task run();
+        task run();
+            aes_sbox_transaction trans;
             @(vif.mon_cb);
             forever begin
-                aes_sbox_transaction trans;
                 @(vif.mon_cb);
-        
                 trans = new();
-                trans.data_in  = vif.mon_cb.data_in;
+                
+                trans.data_in = vif.mon_cb.data_in;
+                `ifdef AES_SCA
+                trans.random_bits = vif.mon_cb.random_bits;
+                repeat(4) @(vif.mon_cb);
+                `endif
                 trans.data_out = vif.mon_cb.data_out;
-        
                 mon2scb.put(trans);
-                ->next_item; 
             end
         endtask
     endclass
@@ -107,6 +115,11 @@ package aes_pkg;
                     $error("[%0t] [FAIL] Trans #%0d Mismatch! | In: %h | Out: %h | Expected: %h", 
                            $time, transaction_count, trans.data_in, trans.data_out, expected_out);
                 end
+
+		if (transaction_count == 256) begin
+                    report();
+                    $finish;
+		end
             end
         endtask
 
@@ -125,6 +138,9 @@ package aes_pkg;
     class aes_operation_transaction #(parameter MODE = 128);
         rand bit [MODE-1:0] key;
         rand bit [127:0]    plain_text;
+	`ifdef AES_SCA
+	rand bit [351:0]    random_bits;
+        `endif
         bit [127:0]         cipher_text;
 
         constraint key_dist {
@@ -180,12 +196,20 @@ package aes_pkg;
                 `ifdef IS_128BIT
                     vif.drv_cb.key_in   <= trans.key;
                     vif.drv_cb.data_in  <= trans.plain_text;
+                    `ifdef AES_SCA
+		        vif.drv_cb.random_bits  <= trans.random_bits;
+                    `endif
                     vif.drv_cb.valid_in <= 1'b1;
                 
                     @(vif.drv_cb);
                     vif.drv_cb.valid_in <= 1'b0;
                 `else
                     vif.drv_cb.valid_in <= 1'b1;
+		    
+		    `ifdef AES_SCA
+                        vif.drv_cb.random_bits <= trans.random_bits;
+                    `endif
+
                     for (int i = 0; i < (MODE/32); i++) begin
                         vif.drv_cb.key_in <= trans.key[MODE - 1 - (i*32) -: 32];
                         if (i >= (MODE/32) - 4) begin
@@ -231,7 +255,14 @@ package aes_pkg;
                             `ifdef IS_128BIT
                                 trans.key = vif.mon_cb.key_in;
                                 trans.plain_text = vif.mon_cb.data_in;
+				`ifdef AES_SCA
+				    trans.random_bits = vif.mon_cb.random_bits;
+				`endif
                             `else
+				`ifdef AES_SCA
+                                    trans.random_bits = vif.mon_cb.random_bits;
+                                `endif
+
                                 for (int i = 0; i < (MODE/32); i++) begin
                                     trans.key[MODE - 1 - (i*32) -: 32] = vif.mon_cb.key_in;
                                     if (i >= (MODE/32) - 4) begin
@@ -295,11 +326,21 @@ package aes_pkg;
                 aes_operation_ref_model(MODE, wide_key, trans.plain_text, expected_cipher);
 
                 if (trans.cipher_text === expected_cipher) begin
+                `ifdef AES_SCA
+                    $display("[%0t] [PASS] Trans #%0d | Plaintext: %h | Key: %h | Random Bit: %h | Ciphertext: %h", 
+                             $time, transaction_count, trans.plain_text, trans.key, trans.random_bits, trans.cipher_text);
+                `else
                     $display("[%0t] [PASS] Trans #%0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
                              $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text);
+                `endif
                 end else begin
                     mismatch_count++;
+                `ifdef AES_SCA
+                    $display("[%0t] [FAIL] Trans #%0d | Plaintext: %h | Key: %h | Random Bit: %h | Ciphertext: %h | Expected Ciphertext: %h", 
+                             $time, transaction_count, trans.plain_text, trans.key, trans.random_bits, trans.cipher_text, expected_cipher);
+                `else
                     $error("[%0t] [FAIL] Trans #%0d Mismatch! | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text, expected_cipher);
+                `endif
                 end
             end
         endtask

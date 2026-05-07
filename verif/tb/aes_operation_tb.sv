@@ -50,13 +50,16 @@ module aes_operation_tb;
     `endif
 
     `DUT_TARGET dut (
-        .clk        (intf.clk),
-        .rst_n      (intf.rst_n),
-        .valid_in   (intf.valid_in),
-        .key_in     (intf.key_in),
-        .data_in    (intf.data_in),
-        .valid_out  (intf.valid_out),
-        .data_out   (intf.data_out)
+        .clk         (intf.clk),
+        .rst_n       (intf.rst_n),
+        .valid_in    (intf.valid_in),
+        .key_in      (intf.key_in),
+        .data_in     (intf.data_in),
+	`ifdef AES_SCA
+	.random_bits (intf.random_bits),
+        `endif
+        .valid_out   (intf.valid_out),
+        .data_out    (intf.data_out)
     );
 
     initial begin
@@ -100,11 +103,15 @@ module aes_operation_tb;
                     `else
                         if(!tr.randomize()) $fatal("Randomization failed");
                     `endif
-
+		
+                    `ifdef AES_SCA
+                        if(!std::randomize(tr.random_bits)) $fatal("Randomization failed");
+                    `endif
                 gen2drv.put(tr); 
                 @(e_sync);
             end
             wait(scb.transaction_count == test_count);
+	    repeat(5) @(posedge clk);
         end
 
         scb.report(); 
