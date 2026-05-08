@@ -62,7 +62,7 @@ VERDI_FLAGS   = -ssf $(DESIGN_VER).fsdb -dbdir simv.daidir \
 DC_SHELL      = dc_shell 
 DC_FLAGS      = -topo
 VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
-		/data/synopsys/lib/saed$(LIBV)nm/lib/verilog/saed$(LIBV)nm_hvt.v \
+		/data/synopsys/lib/saed32nm/lib/verilog/saed32nm_hvt.v \
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
                 +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
                 -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER).sdf \
