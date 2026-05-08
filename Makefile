@@ -7,11 +7,11 @@ ifndef WORKAREA
     $(error ERROR: WORKAREA is not set. Please 'export WORKAREA=/path/to/project' first)
 endif
 
-LIBV        ?= 32
+LIBV        ?= 32 # 14
+DESIGN      ?= aes_operation
 VER         ?= opt
 VER_CAP      = $(shell echo $(VER) | tr a-z A-Z)
-MODE        ?=
-DESIGN      ?= aes_operation
+MODE        ?= 128 
 ifeq ($(MODE),)
     DESIGN_VER = $(DESIGN)_$(VER)_$(PERIOD_TAG)
 else
@@ -82,7 +82,7 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 PT_SHELL      = pt_shell
 
 # Targets
-.PHONY: all libv sim verdi sim.verdi syn syn.sim syn.verdi syn.sim.verdi syn.psim syn.sim.psim syn.tvla syn.all repeat debug help
+.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.sim.psim.tvla syn.all repeat debug help
 
 all: sim syn.all
 
@@ -109,10 +109,6 @@ verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
 	@cd $(SIMV_DIR) && \
 	 $(VERDI) $(VERDI_FLAGS) 
-
-sim.verdi:
-	$(MAKE) sim
-	$(MAKE) verdi
 
 syn:
 	@echo "Starting Synthesis for $(DESIGN_VER)..."
@@ -141,11 +137,6 @@ syn.verdi:
 	@cd $(SYN_SIM) && \
 	 $(VERDI) $(VERDI_FLAGS)
 
-syn.sim.verdi:
-	@echo "Starting Pre-Layout Simulation with Waveform Viewer for $(DESIGN_VER)..."
-	$(MAKE) syn.sim
-	$(MAKE) syn.verdi
-
 syn.psim:
 	@echo "Starting Power Simulation for $(DESIGN_VER)..."
 	@cd $(SYN_DIR) && \
@@ -161,11 +152,6 @@ syn.psim:
 	 rm $(SYN_RES)/tvla_$(TVLA)/tvla_traces.out; \
 	 fi
 
-syn.sim.psim:
-	@echo "Starting Pre-Layout Simulation with Power Simulation for $(DESIGN_VER)..."
-	$(MAKE) syn.sim
-	$(MAKE) syn.psim
-
 syn.tvla:
 	@echo "Starting Leakage Assessment for $(DESIGN_VER)..."
 	@export DESIGN_VER=$(DESIGN_VER) && \
@@ -175,8 +161,8 @@ syn.tvla:
 
 syn.sim.psim.tvla:
 	@echo "Starting TVLA Test with Power Simulation for $(DESIGN_VER)..."
-	$(MAKE) syn.sim.psim TVLA=static
-	$(MAKE) syn.sim.psim TVLA=dynamic
+	$(MAKE) syn.sim syn.psim TVLA=static
+	$(MAKE) syn.sim syn.psim TVLA=dynamic
 	$(MAKE) syn.tvla
 
 syn.all: 
@@ -192,24 +178,24 @@ repeat:
 
 debug:
 	@echo "========================================================"
-	@echo " Makefile Variable Debug"
+	@echo " Environment Status"
 	@echo "========================================================"
+	@echo " WORKAREA:     $(WORKAREA)"
 	@echo " DESIGN:       $(DESIGN)"
 	@echo " VERSION:      $(VER) ($(VER_CAP))"
 	@echo " MODE:         $(MODE)"
 	@echo " PERIOD:       $(PERIOD) ($(PERIOD_TAG))"
-	@echo " TEST COUNT:   $(TEST_CNT)"
 	@echo " TECHNOLOGY:   $(LIBV)nm"
-	@echo " TVLA MODE:    $(TVLA) ($(TVLA_CAP))"
 	@echo ""
-	@echo " DIRECTORIES:"
-	@echo " WORKAREA:     $(WORKAREA)"
+	@echo " Formatted Strings"
+	@echo " DESIGN_VER:   $(DESIGN_VER)"
+	@echo " TVLA_MODE:    $(TVLA) ($(TVLA_CAP))"
+	@echo " TEST COUNT:   $(TEST_CNT)"
+	@echo ""
+	@echo " Active Paths"
 	@echo " SIMV DIR:     $(SIMV_DIR)"
 	@echo " SYN RESULTS:  $(SYN_RES)"
 	@echo " SYN SIM DIR:  $(SYN_SIM)"
-	@echo ""
-	@echo " DERIVED PATHS:"
-	@echo " DESIGN VER:   $(DESIGN_VER)"
 	@echo " SYN LOG:      $(SYN_LOG)"
 	@echo " PSIM LOG:     $(SYN_PSIM_LOG)"
 	@echo "========================================================"
@@ -218,35 +204,39 @@ help:
 	@echo "========================================================================"
 	@echo " AES Design Automation Environment Help"
 	@echo "========================================================================"
-	@echo " USAGE: make [target] [VARIABLES]"
+	@echo " Usage: make [target] [VARIABLES]"
 	@echo ""
-	@echo " SETUP"
-	@echo "  libv           : Copy library setup files (LIBV=14 or 32)"
+	@echo " Setup"
+	@echo "  libv           : Copy library setup files"
 	@echo ""
-	@echo " RTL FLOW"
+	@echo " RTL Simulation"
 	@echo "  sim            : Run RTL simulation"
-	@echo "  verdi          : Open Verdi for RTL"
-	@echo "  sim.verdi      : Run simulation then open Verdi"
+	@echo "  verdi          : Open Verdi for waveforms"
 	@echo ""
-	@echo " SYNTHESIS FLOW"
+	@echo " Synthesis Flow"
 	@echo "  syn            : Run Design Compiler synthesis"
 	@echo "  syn.sim        : Run Gate Level Simulation"
 	@echo "  syn.verdi      : Open Verdi for Gate Level"
-	@echo "  syn.sim.verdi  : Run GLS then open Verdi"
 	@echo ""
-	@echo " POWER AND TVLA"
+	@echo " Power and Leakage Analysis"
 	@echo "  syn.psim       : Run PrimeTime PX power analysis"
 	@echo "  syn.sim.psim   : Run GLS then power analysis"
 	@echo "  syn.tvla       : Run Python Leakage Assessment"
-	@echo "  syn.all        : Run full flow (Syn, Static, Dynamic, TVLA)"
+	@echo "  syn.sim.psim.tvla : Run static and dynamic TVLA tests"
+	@echo "  syn.all        : Run full flow from synthesis to TVLA"
 	@echo ""
-	@echo " TOOLS"
-	@echo "  debug          : Print current variables"
+	@echo " Management"
+	@echo "  debug          : Print all environment variables"
 	@echo "  help           : Show this menu"
 	@echo ""
-	@echo " VARIABLES"
-	@echo "  MODE=128|192|256   : AES key size"
-	@echo "  PERIOD=value       : Clock period in ns"
-	@echo "  LIBV=14|32         : Tech node"
-	@echo "  TVLA=static|dynamic: Power analysis type"
+	@echo " Configuration Variables"
+	@echo "  LIBV           : Set tech node like 32 (default) or 14"
+	@echo "  DESIGN         : Set design like aes_operation (default)"
+	@echo "  VER            : Set version of design like opt (default)"
+	@echo "  MODE           : Set AES key size like 128 (default), 192 or 256"
+	@echo "  PERIOD         : Set clock period in nanoseconds like 10.0 (default)"
+	@echo "  TEST_CNT       : Set number of encryption like 1000 (default)"
+	@echo "  TVLA           : Set power mode to none (default), static or dynamic"
+	@echo "  N              : Set number of commands to be repeated like 10 (default)"
+	@echo "  CMD            : Set commands to be repeated like \"sim DESIGN=operation VER=opt MODE=128\""
 	@echo "========================================================================"

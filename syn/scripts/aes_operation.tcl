@@ -114,7 +114,7 @@ set_cost_priority -delay
 set_dynamic_optimization true
 set_leakage_optimization true
 
-# set_clock_gating_style -minimum_bitwidth 4 -control_point before -positive_edge_logic {integrated}
+# set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated}
 
 # =====================================================================
 # 4. COMPILE

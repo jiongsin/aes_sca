@@ -145,10 +145,10 @@ class aes_sbox_monitor;
 
         constraint key_dist {
             key dist {
-                {MODE{1'b1}} :/ 20,
-                0            :/ 10,
-                [1 : 100]    :/ 10,
-                [101 : {MODE{1'b1}}-1] :/ 60
+                {MODE{1'b1}} :/ 3,
+                0            :/ 3,
+                [1 : {(MODE-1){1'b1}}-1]    :/ 4,
+                [{(MODE-1){1'b1}} : {MODE{1'b1}}-1] :/ 90
             };
         }
 
@@ -367,10 +367,10 @@ class aes_sbox_monitor;
 
         constraint key_dist {
             key dist {
-                {MODE{1'b1}} :/ 20,
-                0            :/ 10,
-                [1 : 100]    :/ 10,
-                [101 : {MODE{1'b1}}-1] :/ 60
+                {MODE{1'b1}} :/ 3,
+                0            :/ 3,
+                [1 : {(MODE-1){1'b1}}-1]    :/ 4,
+                [{(MODE-1){1'b1}} : {MODE{1'b1}}-1] :/ 90
             };
         }
 
