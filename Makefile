@@ -11,7 +11,7 @@ LIBV        ?= 32 # 14
 DESIGN      ?= aes_operation
 VER         ?= opt
 VER_CAP      = $(shell echo $(VER) | tr a-z A-Z)
-MODE        ?= 128 
+MODE        ?= 128
 ifeq ($(MODE),)
     DESIGN_VER = $(DESIGN)_$(VER)_$(PERIOD_TAG)
 else
@@ -82,9 +82,9 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 PT_SHELL      = pt_shell
 
 # Targets
-.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.sim.psim.tvla syn.all repeat debug help
+.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp repeat debug help
 
-all: sim syn.all
+all: sim syn syn.alp
 
 libv:
 	@cp syn/scripts/dc_lib_setup_$(LIBV)nm.tcl syn/scripts/dc_lib_setup.tcl
@@ -130,7 +130,7 @@ syn.sim:
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
 	 +define+TVLA_$(TVLA_CAP) +notimingchecks +xprop=tmerge
-	 # +DUMP_VCD
+	 # +DUMP_VCD +nospecify +notimingcheck +delay_mode_zero
 
 syn.verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
@@ -139,6 +139,7 @@ syn.verdi:
 
 syn.psim:
 	@echo "Starting Power Simulation for $(DESIGN_VER)..."
+	@rm -rf $(SYN_RES)/tvla_*
 	@cd $(SYN_DIR) && \
 	 export DESIGN=$(DESIGN) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
@@ -159,16 +160,20 @@ syn.tvla:
 	 if [ -d venv ]; then source venv/bin/activate; fi && \
 	 python3 $(DESIGN)_tvla.py
 
-syn.sim.psim.tvla:
+syn.all:
 	@echo "Starting TVLA Test with Power Simulation for $(DESIGN_VER)..."
 	$(MAKE) syn.sim syn.psim TVLA=static
 	$(MAKE) syn.sim syn.psim TVLA=dynamic
 	$(MAKE) syn.tvla
 
-syn.all: 
-	@echo "Starting TVLA Test from Synthesis for $(DESIGN_VER)..."
-	$(MAKE) syn
-	$(MAKE) syn.sim.psim.tvla
+syn.alp:
+	@echo "Starting TVLA Test with Power Simulation in Parallel for $(DESIGN_VER)..."
+	@( \
+		gnome-terminal --wait --title="Static Analysis for $(DESIGN_VER)" -- bash -c "$(MAKE) syn.sim syn.psim TVLA=static" & \
+		gnome-terminal --wait --title="Dynamic Analysis for $(DESIGN_VER)" -- bash -c "$(MAKE) syn.sim syn.psim TVLA=dynamic" & \
+		wait \
+	)
+	@$(MAKE) syn.tvla
 
 repeat:
 	@for i in $$(seq 1 $(N)); do \
@@ -238,5 +243,6 @@ help:
 	@echo "  TEST_CNT       : Set number of encryption like 1000 (default)"
 	@echo "  TVLA           : Set power mode to none (default), static or dynamic"
 	@echo "  N              : Set number of commands to be repeated like 10 (default)"
-	@echo "  CMD            : Set commands to be repeated like \"sim DESIGN=operation VER=opt MODE=128\""
+	@echo "  CMD            : Set commands to be repeated like \"sim DESIGN=aes_operation VER=opt MODE=128\""
+	@echo " Frequent Command "
 	@echo "========================================================================"
