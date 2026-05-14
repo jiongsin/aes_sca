@@ -279,27 +279,27 @@ module aes_operation_sca #(
                     if (cycle_cnt >= 4'd5 && cycle_cnt <= 4'd8) begin
                         case (cycle_cnt)
                             4'd5: begin 
-                                next_state_buffer_0[95:64] <= round_data_out_0; 
-                                next_state_buffer_1[95:64] <= round_data_out_1; 
+                                next_state_buffer_0[95:64] <= round_data_out_0 ^ random_bits[31:0]; 
+                                next_state_buffer_1[95:64] <= round_data_out_1 ^ random_bits[31:0]; 
                             end
                             4'd6: begin 
-                                next_state_buffer_0[63:32] <= round_data_out_0; 
-                                next_state_buffer_1[63:32] <= round_data_out_1; 
+                                next_state_buffer_0[63:32] <= round_data_out_0 ^ random_bits[31:0]; 
+                                next_state_buffer_1[63:32] <= round_data_out_1 ^ random_bits[31:0]; 
                             end
                             4'd7: begin 
-                                next_state_buffer_0[31:0]  <= round_data_out_0; 
-                                next_state_buffer_1[31:0]  <= round_data_out_1; 
+                                next_state_buffer_0[31:0]  <= round_data_out_0 ^ random_bits[31:0]; 
+                                next_state_buffer_1[31:0]  <= round_data_out_1 ^ random_bits[31:0]; 
                             end
                             4'd8: begin
                                 state_reg_0[127:96] <= next_state_buffer_0[95:64];
                                 state_reg_0[95:64]  <= next_state_buffer_0[63:32];
                                 state_reg_0[63:32]  <= next_state_buffer_0[31:0];
-                                state_reg_0[31:0]   <= round_data_out_0;
+                                state_reg_0[31:0]   <= round_data_out_0 ^ random_bits[31:0];
                                 
                                 state_reg_1[127:96] <= next_state_buffer_1[95:64];
                                 state_reg_1[95:64]  <= next_state_buffer_1[63:32];
                                 state_reg_1[63:32]  <= next_state_buffer_1[31:0];
-                                state_reg_1[31:0]   <= round_data_out_1;
+                                state_reg_1[31:0]   <= round_data_out_1 ^ random_bits[31:0];
                             end
                         endcase
                     end
