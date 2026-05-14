@@ -42,6 +42,16 @@ module aes_operation_tb;
 
     aes_operation_if#(MODE) intf(clk);
     assign intf.rst_n = rst_n;
+
+    `ifdef AES_SCA
+    always @(posedge clk) begin
+        if (rst_n) begin
+            if (!std::randomize(intf.random_bits)) begin
+                $display("Randomization failed");
+            end
+        end
+    end
+    `endif
    
     `ifdef GLS_SIM
         `define DUT_TARGET aes_operation_```VER``_MODE```MODE
@@ -55,8 +65,8 @@ module aes_operation_tb;
         .valid_in    (intf.valid_in),
         .key_in      (intf.key_in),
         .data_in     (intf.data_in),
-	`ifdef AES_SCA
-	.random_bits (intf.random_bits),
+        `ifdef AES_SCA
+        .random_bits (intf.random_bits),
         `endif
         .valid_out   (intf.valid_out),
         .data_out    (intf.data_out)
@@ -67,8 +77,8 @@ module aes_operation_tb;
         mailbox gen2drv = new(1); 
         mailbox mon2scb = new();
 
-        aes_operation_driver#(MODE)    drv = new(intf, gen2drv, e_sync);
-        aes_operation_monitor#(MODE)   mon = new(intf, mon2scb, e_sync);
+        aes_operation_driver#(MODE)   drv = new(intf, gen2drv, e_sync);
+        aes_operation_monitor#(MODE)  mon = new(intf, mon2scb, e_sync);
         aes_operation_scoreboard#(MODE) scb = new(mon2scb);
 
         if (!$value$plusargs("COUNT=%d", test_count)) begin
@@ -103,15 +113,12 @@ module aes_operation_tb;
                     `else
                         if(!tr.randomize()) $fatal("Randomization failed");
                     `endif
-		
-                    `ifdef AES_SCA
-                        if(!std::randomize(tr.random_bits)) $fatal("Randomization failed");
-                    `endif
+        
                 gen2drv.put(tr); 
                 @(e_sync);
             end
             wait(scb.transaction_count == test_count);
-	    repeat(5) @(posedge clk);
+        repeat(5) @(posedge clk);
         end
 
         scb.report(); 

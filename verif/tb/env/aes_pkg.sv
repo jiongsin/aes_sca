@@ -23,8 +23,8 @@ package aes_pkg;
 
     class aes_sbox_transaction;
         rand bit [7:0] data_in;
-	`ifdef AES_SCA
-	rand bit [35:0] random_bits;
+        `ifdef AES_SCA
+        rand bit [35:0] random_bits;
         `endif
         bit [7:0] data_out;
         
@@ -50,16 +50,12 @@ package aes_pkg;
 
                 @(vif.drv_cb);
                 vif.drv_cb.data_in <= trans.data_in;
-		`ifdef AES_SCA
-		vif.drv_cb.random_bits <= trans.random_bits;
-                repeat(4) @(vif.drv_cb);
-		`endif
                 ->next_item;
             end
         endtask
     endclass
 
-class aes_sbox_monitor;
+    class aes_sbox_monitor;
         virtual aes_sbox_if vif;
         mailbox mon2scb;
         event next_item;
@@ -116,10 +112,10 @@ class aes_sbox_monitor;
                            $time, transaction_count, trans.data_in, trans.data_out, expected_out);
                 end
 
-		if (transaction_count == 256) begin
+                if (transaction_count == 256) begin
                     report();
                     $finish;
-		end
+                end
             end
         endtask
 
@@ -138,8 +134,8 @@ class aes_sbox_monitor;
     class aes_operation_transaction #(parameter MODE = 128);
         rand bit [MODE-1:0] key;
         rand bit [127:0]    plain_text;
-	`ifdef AES_SCA
-	rand bit [351:0]    random_bits;
+        `ifdef AES_SCA
+        rand bit [351:0]    random_bits;
         `endif
         bit [127:0]         cipher_text;
 
@@ -196,20 +192,13 @@ class aes_sbox_monitor;
                 `ifdef IS_128BIT
                     vif.drv_cb.key_in   <= trans.key;
                     vif.drv_cb.data_in  <= trans.plain_text;
-                    `ifdef AES_SCA
-		        vif.drv_cb.random_bits  <= trans.random_bits;
-                    `endif
                     vif.drv_cb.valid_in <= 1'b1;
                 
                     @(vif.drv_cb);
                     vif.drv_cb.valid_in <= 1'b0;
                 `else
                     vif.drv_cb.valid_in <= 1'b1;
-		    
-		    `ifdef AES_SCA
-                        vif.drv_cb.random_bits <= trans.random_bits;
-                    `endif
-
+                    
                     for (int i = 0; i < (MODE/32); i++) begin
                         vif.drv_cb.key_in <= trans.key[MODE - 1 - (i*32) -: 32];
                         if (i >= (MODE/32) - 4) begin
@@ -255,11 +244,11 @@ class aes_sbox_monitor;
                             `ifdef IS_128BIT
                                 trans.key = vif.mon_cb.key_in;
                                 trans.plain_text = vif.mon_cb.data_in;
-				`ifdef AES_SCA
-				    trans.random_bits = vif.mon_cb.random_bits;
-				`endif
+                                `ifdef AES_SCA
+                                    trans.random_bits = vif.mon_cb.random_bits;
+                                `endif
                             `else
-				`ifdef AES_SCA
+                                `ifdef AES_SCA
                                     trans.random_bits = vif.mon_cb.random_bits;
                                 `endif
 
