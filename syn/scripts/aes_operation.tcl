@@ -6,10 +6,7 @@ source ./scripts/dc_lib_setup.tcl
 set mode $env(mode)
 set version $env(version)
 
-set rtl_files [list \
-    "aes_operation_${version}.v" \
-]
-
+set rtl_files [list "aes_operation_${version}.v"]
 set rtl_top "aes_operation_${version}"
 
 set ver_define [string toupper "AES_${version}"]
@@ -20,9 +17,7 @@ set hdlin_preserve_net_names true
 
 analyze -f verilog $rtl_files -define [list $mode_define $ver_define]
 
-echo "-----------------------------------------------------------------"
 echo "Starting Synthesis for ${rtl_top}"
-echo "-----------------------------------------------------------------"
 
 elaborate $rtl_top -parameters "MODE = $mode"
 current_design [get_designs ${rtl_top}*]
@@ -36,7 +31,7 @@ if {[check_design] == 0} { echo "Error: Check Design Failed"; exit 1 }
 source -echo -verbose ./scripts/constraints/aes_operation_cons.tcl
 
 # =====================================================================
-# 2.5 SCA PRESERVATION CONSTRAINTS (CRITICAL)
+# 3. SCA PRESERVATION CONSTRAINTS
 # =====================================================================
 echo "Applying Side Channel Security Constraints..."
 
@@ -44,7 +39,7 @@ if { $version == "sca" } {
     # 1. Protect DOM AND Gates
     set_ungroup [get_designs *dom_and_sca*] false
     set_boundary_optimization [get_designs *dom_and_sca*] false
-    
+
     # Stop constants from sneaking through the boundary
     set_app_var compile_enable_constant_propagation_with_no_boundary_opt false
     
@@ -54,11 +49,10 @@ if { $version == "sca" } {
     set_dont_touch [get_nets -hierarchical *inner_1*]
 
     # 2. Protect Logic Boundaries and Masks
-    # Protect the random numbers
     set_dont_touch [get_nets *random_bits*]
     set_dont_touch [get_nets -hierarchical *data_mask*]
     set_dont_touch [get_nets -hierarchical *key_mask*]
-    
+     
     # Protect initial masking boundaries
     set_dont_touch [get_nets -hierarchical *masked_key_in_0*]
     set_dont_touch [get_nets -hierarchical *masked_key_in_1*]
@@ -67,39 +61,28 @@ if { $version == "sca" } {
     set_dont_touch [get_nets -hierarchical *subbytes_out_0*]
     set_dont_touch [get_nets -hierarchical *subbytes_out_1*]
 
-    # Protect MixColumns and Round logic boundaries
-    set_dont_touch [get_nets -hierarchical *mixcolumns_out_0*]
-    set_dont_touch [get_nets -hierarchical *mixcolumns_out_1*]
-    set_dont_touch [get_nets -hierarchical *round_data_out_0*]
-    set_dont_touch [get_nets -hierarchical *round_data_out_1*]
-
     # Protect key expansion boundaries
     set_dont_touch [get_nets -hierarchical *expanded_key_word_0*]
     set_dont_touch [get_nets -hierarchical *expanded_key_word_1*]
 
     # 3. Protect Sbox Math Blocks
-    set_ungroup [get_designs *aes_sbox_sca*] false
-    set_ungroup [get_designs *isomorphic_mapping_sca*] false
     set_ungroup [get_designs *multiplicative_inverter_sca*] false
-    set_ungroup [get_designs *inverse_mapping_sca*] false
-    set_ungroup [get_designs *affine_transformation_sca*] false
 }
 
-# 4. Global Security Settings
-# Stop multibit register packing
-set_app_var hdlin_infer_multibit default_none
+# Enable global merging for normal logic save area
+set_optimize_registers true
+set_app_var compile_enable_register_merging true
+set_register_merging [all_registers] true
 
-# Keep the state machine exactly as written
-set_app_var fsm_auto_inferring false
-set_app_var fsm_enable_state_minimization false
-
-# Disable aggressive register merging globally
-set_optimize_registers false
-set_app_var compile_enable_register_merging false
-set_register_merging [all_registers] false
+# Strictly protect only the DOM registers using a safe search
+set protected_regs [get_cells -hierarchical {*state_reg_* *cross_*_reg* *inner_*_reg*} -quiet]
+if {[sizeof_collection $protected_regs] > 0} {
+    set_register_merging $protected_regs false
+    set_dont_retime $protected_regs true
+}
 
 # =====================================================================
-# 3. OPTIMIZATION
+# 4. OPTIMIZATION & COMPILE
 # =====================================================================
 if {[shell_is_in_topographical_mode]} {
     set_aspect_ratio 1
@@ -107,30 +90,31 @@ if {[shell_is_in_topographical_mode]} {
 }
 
 set run_name "${rtl_top}_MODE${mode}_${period}ns"
-read_saif -input ../verif/sim/${run_name}/${run_name}.saif \
-    -instance_name aes_operation_tb/dut
+read_saif -input ../verif/sim/${run_name}/${run_name}.saif -instance_name aes_operation_tb/dut
 
 set_cost_priority -delay
-set_dynamic_optimization true
+set_dynamic_optimization true 
 set_leakage_optimization true
+set_fix_hold [get_clocks clk]
 
-# set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated}
+# Enable Clock Gating for Power Savings
+set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated} -control_point before -control_signal scan_enable
+insert_clock_gating
 
-# =====================================================================
-# 4. COMPILE
-# =====================================================================
 check_timing
 
-compile_ultra -no_autoungroup
+# Compile with gate clock enabled
+compile_ultra -no_autoungroup -gate_clock
 
 set worst_path [get_timing_paths -delay_type max -nworst 1]
 if {[sizeof_collection $worst_path] > 0} {
     set worst_slack [get_attribute $worst_path slack]
     if {$worst_slack < 0} {
         echo "Negative Slack ($worst_slack) found. Retrying..."
-        compile_ultra -incremental -no_autoungroup 
+        compile_ultra -incremental -no_autoungroup
     }
 }
+
 check_design
 check_timing
 
@@ -141,7 +125,8 @@ file mkdir ./results/${run_name}
 file mkdir ./results/${run_name}/reports
 
 report_area -physical > ./results/${run_name}/reports/area.rpt
-report_timing -path full -delay max -max_paths 20 > ./results/${run_name}/reports/timing.rpt
+report_timing -path full -delay max -max_paths 20 > ./results/${run_name}/reports/timing_setup.rpt
+report_timing -path full -delay min -max_paths 10 > ./results/${run_name}/reports/timing_hold.rpt
 report_power > ./results/${run_name}/reports/power.rpt
 report_qor > ./results/${run_name}/reports/qor.rpt
 report_constraints -all_violators > ./results/${run_name}/reports/constraints_violators.rpt
@@ -153,5 +138,4 @@ write_sdc ./results/${run_name}/${run_name}.sdc
 write_sdf ./results/${run_name}/${run_name}.sdf
 
 echo "Finished Synthesis for ${run_name}"
-
 exit

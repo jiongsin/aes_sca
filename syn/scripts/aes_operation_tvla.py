@@ -174,7 +174,7 @@ def perform_tvla():
     cycles_per_encryption = 99 ;#49
     encryption_duration = cycle_duration * cycles_per_encryption
     start_time = 90 * 1000
-    resample_dt = 1
+    resample_dt = 50
 
     common_time_axis = np.arange(0, encryption_duration, resample_dt)
 

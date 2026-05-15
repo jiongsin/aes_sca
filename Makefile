@@ -129,7 +129,7 @@ syn.sim:
 	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
-	 +define+TVLA_$(TVLA_CAP) +notimingchecks +xprop=tmerge
+	 +define+TVLA_$(TVLA_CAP) +xprop=tmerge
 	 # +DUMP_VCD +nospecify +notimingcheck +delay_mode_zero
 
 syn.verdi:

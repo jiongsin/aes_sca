@@ -184,6 +184,34 @@ package aes_pkg;
         task run();
             vif.drv_cb.valid_in <= 0;
             forever begin
+                `ifdef AES_SCA
+                aes_operation_transaction#(MODE) trans_A, trans_B;
+                gen2drv.get(trans_A);
+                gen2drv.get(trans_B);
+                
+                @(vif.drv_cb);
+                vif.drv_cb.valid_in <= 1'b1;
+                
+                for (int i = 0; i < (MODE/32); i++) begin
+                    vif.drv_cb.key_in <= trans_A.key[MODE - 1 - (i*32) -: 32];
+                    vif.drv_cb.data_in <= trans_A.plain_text[127 - (i*32) -: 32];
+                    if (i < (MODE/32) - 1) @(vif.drv_cb);
+                end
+                @(vif.drv_cb);
+                
+                for (int i = 0; i < (MODE/32); i++) begin
+                    vif.drv_cb.key_in <= trans_B.key[MODE - 1 - (i*32) -: 32];
+                    vif.drv_cb.data_in <= trans_B.plain_text[127 - (i*32) -: 32];
+                    if (i < (MODE/32) - 1) @(vif.drv_cb);
+                end
+                @(vif.drv_cb);
+                
+                vif.drv_cb.valid_in <= 1'b0;
+                
+                wait(vif.mon_cb.valid_out == 1'b1);
+                wait(vif.mon_cb.valid_out == 1'b0);
+                
+                `else
                 aes_operation_transaction#(MODE) trans;
                 gen2drv.get(trans);
             
@@ -214,6 +242,7 @@ package aes_pkg;
                 
                 wait(vif.mon_cb.valid_out == 1'b1);
                 @(vif.mon_cb);
+                `endif
             end
         endtask
     endclass
@@ -225,6 +254,10 @@ package aes_pkg;
 
         typedef enum {IDLE, CAPTURE_INPUT, WAIT_OUTPUT, CLEANUP} state_t;
         state_t state = IDLE;
+        
+        `ifdef AES_SCA
+        aes_operation_transaction#(MODE) trans_q[$];
+        `endif
 
         function new(virtual aes_operation_if#(MODE) vif, mailbox mon2scb, event next_item);
             this.vif = vif;
@@ -233,8 +266,43 @@ package aes_pkg;
         endfunction
 
         task run();
+            `ifdef AES_SCA
+            fork
+                forever begin
+                    @(vif.mon_cb);
+                    if (vif.mon_cb.valid_in === 1'b1) begin
+                        aes_operation_transaction#(MODE) trans = new();
+                        trans.key = 0;
+                        trans.plain_text = 0;
+                        for (int i = 0; i < (MODE/32); i++) begin
+                            trans.key[MODE - 1 - (i*32) -: 32] = vif.mon_cb.key_in;
+                            trans.plain_text[127 - (i*32) -: 32] = vif.mon_cb.data_in;
+                            trans.random_bits = vif.mon_cb.random_bits;
+                            if (i < (MODE/32) - 1) @(vif.mon_cb);
+                        end
+                        trans_q.push_back(trans);
+                    end
+                end
+                
+                forever begin
+                    @(vif.mon_cb);
+                    if (vif.mon_cb.valid_out === 1'b1) begin
+                        aes_operation_transaction#(MODE) trans;
+                        wait(trans_q.size() > 0);
+                        trans = trans_q.pop_front();
+                        
+                        for (int i = 0; i < 4; i++) begin
+                            trans.cipher_text[127 - (i*32) -: 32] = vif.mon_cb.data_out;
+                            if (i < 3) @(vif.mon_cb);
+                        end
+                        
+                        mon2scb.put(trans);
+                        ->next_item;
+                    end
+                end
+            join_none
+            `else
             aes_operation_transaction#(MODE) trans;
-            
             forever begin
                 @(vif.mon_cb);
                 case (state)
@@ -244,14 +312,7 @@ package aes_pkg;
                             `ifdef IS_128BIT
                                 trans.key = vif.mon_cb.key_in;
                                 trans.plain_text = vif.mon_cb.data_in;
-                                `ifdef AES_SCA
-                                    trans.random_bits = vif.mon_cb.random_bits;
-                                `endif
                             `else
-                                `ifdef AES_SCA
-                                    trans.random_bits = vif.mon_cb.random_bits;
-                                `endif
-
                                 for (int i = 0; i < (MODE/32); i++) begin
                                     trans.key[MODE - 1 - (i*32) -: 32] = vif.mon_cb.key_in;
                                     if (i >= (MODE/32) - 4) begin
@@ -288,6 +349,7 @@ package aes_pkg;
                     end
                 endcase
             end
+            `endif
         endtask
     endclass
 
@@ -304,6 +366,9 @@ package aes_pkg;
             aes_operation_transaction#(MODE) trans;
             bit [127:0] expected_cipher;
             bit [255:0] wide_key;
+            
+            int cycle_num;
+            string block_id;
 
             forever begin
                 mon2scb.get(trans);
@@ -314,23 +379,29 @@ package aes_pkg;
                 wide_key[MODE-1:0] = trans.key;
                 aes_operation_ref_model(MODE, wide_key, trans.plain_text, expected_cipher);
 
-                if (trans.cipher_text === expected_cipher) begin
                 `ifdef AES_SCA
-                    $display("[%0t] [PASS] Trans #%0d | Plaintext: %h | Key: %h | Random Bit: %h | Ciphertext: %h", 
-                             $time, transaction_count, trans.plain_text, trans.key, trans.random_bits, trans.cipher_text);
+                    // Calculate which cycle and which block (A or B) this is
+                    cycle_num = ((transaction_count - 1) / 2) + 1;
+                    block_id  = (transaction_count % 2 != 0) ? "A" : "B";
+
+                    if (trans.cipher_text === expected_cipher) begin
+                        $display("[%0t] [PASS] Cycle #%0d Block %s (Trans #%0d) | Plaintext: %h | Key: %h | Ciphertext: %h", 
+                                 $time, cycle_num, block_id, transaction_count, trans.plain_text, trans.key, trans.cipher_text);
+                    end else begin
+                        mismatch_count++;
+                        $error("[%0t] [FAIL] Cycle #%0d Block %s (Trans #%0d) Mismatch! | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
+                               $time, cycle_num, block_id, transaction_count, trans.plain_text, trans.key, trans.cipher_text, expected_cipher);
+                    end
                 `else
-                    $display("[%0t] [PASS] Trans #%0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
-                             $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text);
+                    if (trans.cipher_text === expected_cipher) begin
+                        $display("[%0t] [PASS] Trans #%0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
+                                 $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text);
+                    end else begin
+                        mismatch_count++;
+                        $error("[%0t] [FAIL] Trans #%0d Mismatch! | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
+                               $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text, expected_cipher);
+                    end
                 `endif
-                end else begin
-                    mismatch_count++;
-                `ifdef AES_SCA
-                    $display("[%0t] [FAIL] Trans #%0d | Plaintext: %h | Key: %h | Random Bit: %h | Ciphertext: %h | Expected Ciphertext: %h", 
-                             $time, transaction_count, trans.plain_text, trans.key, trans.random_bits, trans.cipher_text, expected_cipher);
-                `else
-                    $error("[%0t] [FAIL] Trans #%0d Mismatch! | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text, expected_cipher);
-                `endif
-                end
             end
         endtask
 
@@ -338,7 +409,12 @@ package aes_pkg;
             $display("\n========================================");
             $display("      AES-%0d VERIFICATION REPORT", MODE);
             $display("========================================");
-            $display(" Total Transactions : %0d", transaction_count);
+            `ifdef AES_SCA
+                $display(" Total Transactions : %0d", transaction_count);
+                $display(" Total Core Cycles  : %0d", transaction_count / 2);
+            `else
+                $display(" Total Transactions : %0d", transaction_count);
+            `endif
             $display(" Mismatches         : %0d", mismatch_count);
             $display(" TEST STATUS        : %s", 
                     (mismatch_count == 0 && transaction_count > 0) ? "PASSED" : "FAILED");
