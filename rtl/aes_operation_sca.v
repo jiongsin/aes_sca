@@ -289,9 +289,20 @@ module aes_operation_sca #(
                     if (cycle_cnt >= 4'd4 && cycle_cnt <= 4'd7) begin
                         key_reg_0 <= {key_reg_0[(MODE)-33 : 0], expanded_key_word_0};
                         key_reg_1 <= {key_reg_1[(MODE)-33 : 0], expanded_key_word_1};
-                        
-                        round_key_reg_0 <= {round_key_reg_0[95:0], expanded_key_word_0};
-                        round_key_reg_1 <= {round_key_reg_1[95:0], expanded_key_word_1};
+                       
+		       `ifdef AES_256
+                            // AES-256 (Nk=8) target datapath words are 4 words back in the buffer
+                            round_key_reg_0 <= {round_key_reg_0[95:0], key_reg_0[127:96]};
+                            round_key_reg_1 <= {round_key_reg_1[95:0], key_reg_1[127:96]};
+                        `elsif AES_192
+                            // AES-192 (Nk=6) target datapath words are 2 words back in the buffer
+                            round_key_reg_0 <= {round_key_reg_0[95:0], key_reg_0[63:32]};
+                            round_key_reg_1 <= {round_key_reg_1[95:0], key_reg_1[63:32]};
+                        `else
+                            // AES-128 (Nk=4) uses the newly expanded word natively
+                            round_key_reg_0 <= {round_key_reg_0[95:0], expanded_key_word_0};
+                            round_key_reg_1 <= {round_key_reg_1[95:0], expanded_key_word_1};
+                        `endif
                     end
                     
                     if (cycle_cnt >= 4'd5 && cycle_cnt <= 4'd8) begin
