@@ -98,20 +98,30 @@ set_leakage_optimization true
 set_fix_hold [get_clocks clk]
 
 # Enable Clock Gating for Power Savings
-set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated} -control_point before -control_signal scan_enable
-insert_clock_gating
+if { $version == "sca" } {
+    set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated} -control_point before -control_signal scan_enable
+    insert_clock_gating
+}
 
 check_timing
 
 # Compile with gate clock enabled
-compile_ultra -no_autoungroup -gate_clock
+if { $version == "sca" } {
+    compile_ultra -no_autoungroup -gate_clock
+} else {
+    compile_ultra 
+}
 
 set worst_path [get_timing_paths -delay_type max -nworst 1]
 if {[sizeof_collection $worst_path] > 0} {
     set worst_slack [get_attribute $worst_path slack]
     if {$worst_slack < 0} {
         echo "Negative Slack ($worst_slack) found. Retrying..."
-        compile_ultra -incremental -no_autoungroup
+	if { $version == "sca" } {
+            compile_ultra -no_autoungroup -gate_clock -incremental 
+        } else {
+            compile_ultra -incremental 
+        }
     }
 }
 

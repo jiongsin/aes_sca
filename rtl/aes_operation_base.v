@@ -4,35 +4,42 @@ module aes_operation_base #(
     input clk,
     input rst_n,
     input valid_in,
-    input [MODE-1:0] key_in,
-    input [127:0]  data_in,
-    output reg     valid_out,
-    output reg [127:0] data_out
+    input [31:0] key_in,
+    input [31:0] data_in,
+    output reg       valid_out,
+    output reg [31:0] data_out
 );
 
     `ifdef AES_256
         localparam Nr = 14;
+        localparam KEY_WORDS = 8;
     `elsif AES_192
         localparam Nr = 12;
+        localparam KEY_WORDS = 6;
     `else
         localparam Nr = 10;
+        localparam KEY_WORDS = 4;
     `endif
 
-    localparam S_IDLE = 1'b0;
-    localparam S_CALC = 1'b1;
+    localparam S_IDLE   = 2'd0;
+    localparam S_LOAD   = 2'd1;
+    localparam S_ROUND  = 2'd2;
+    localparam S_OUTPUT = 2'd3;
 
-    reg state, next_state;
+    reg [1:0] state, next_state;
     reg [3:0] round_ctr, next_round_ctr;
+    reg [3:0] word_ctr, next_word_ctr;
     reg [127:0] state_reg, next_state_reg;
     reg [MODE-1:0] key_reg, next_key_reg;
     reg next_valid_out;
+    reg [31:0] next_data_out;
 
     wire [127:0] round_key;
     wire [MODE-1:0] generated_next_key_reg;
     wire [127:0] round_state_out;
 
     aes_key_expansion_base #(MODE) u_key_ext (
-        .round_ctr(round_ctr),
+        .round_ctr(round_ctr == 4'd0 ? 4'd1 : round_ctr),
         .key_reg(key_reg),
         .round_key(round_key),
         .next_key_reg(generated_next_key_reg)
@@ -49,46 +56,85 @@ module aes_operation_base #(
         if (!rst_n) begin
             state      <= S_IDLE;
             round_ctr  <= 4'd0;
+            word_ctr   <= 4'd0;
             state_reg  <= 128'd0;
             key_reg    <= {MODE{1'b0}};
             valid_out  <= 1'b0;
-            data_out   <= 128'd0;
+            data_out   <= 32'd0;
         end else begin
             state      <= next_state;
             round_ctr  <= next_round_ctr;
+            word_ctr   <= next_word_ctr;
             state_reg  <= next_state_reg;
             key_reg    <= next_key_reg;
             valid_out  <= next_valid_out;
-            data_out   <= next_valid_out ? next_state_reg : 128'd0;
+            data_out   <= next_data_out;
         end
     end
 
     always @(*) begin
         next_state      = state;
         next_round_ctr  = round_ctr;
+        next_word_ctr   = word_ctr;
         next_state_reg  = state_reg;
         next_key_reg    = key_reg;
         next_valid_out  = 1'b0;
+        next_data_out   = 32'd0;
 
         case (state)
             S_IDLE: begin
                 if (valid_in) begin
-                    next_state      = S_CALC;
-                    next_state_reg  = data_in ^ key_in[MODE-1 -: 128];
-                    next_key_reg    = key_in;
-                    next_round_ctr  = 4'd1;
+                    next_state     = S_LOAD;
+                    next_word_ctr  = 4'd1;
+                    next_state_reg = {state_reg[95:0], data_in};
+                    next_key_reg   = {key_reg[MODE-33:0], key_in};
                 end
             end
 
-            S_CALC: begin
-                next_state_reg = round_state_out;
-                next_key_reg   = generated_next_key_reg;
+            S_LOAD: begin
+                if (valid_in) begin
+                    next_word_ctr = word_ctr + 4'd1;
+                    
+                    if (word_ctr < 4) begin
+                        next_state_reg = {state_reg[95:0], data_in};
+                    end
+                    
+                    if (word_ctr < KEY_WORDS) begin
+                        next_key_reg = {key_reg[MODE-33:0], key_in};
+                    end
 
-                if (round_ctr == Nr) begin
-                    next_valid_out = 1'b1;
-                    next_state     = S_IDLE;
+                    if (word_ctr == KEY_WORDS - 1) begin
+                        next_state = S_ROUND;
+                        next_round_ctr = 4'd0;
+                    end
+                end
+            end
+
+            S_ROUND: begin
+                if (round_ctr == 4'd0) begin
+                    next_state_reg = state_reg ^ key_reg[MODE-1 -: 128];
+                    next_round_ctr = 4'd1;
                 end else begin
-                    next_round_ctr = round_ctr + 4'd1;
+                    next_state_reg = round_state_out;
+                    next_key_reg   = generated_next_key_reg;
+
+                    if (round_ctr == Nr) begin
+                        next_state = S_OUTPUT;
+                        next_word_ctr = 4'd0;
+                    end else begin
+                        next_round_ctr = round_ctr + 4'd1;
+                    end
+                end
+            end
+
+            S_OUTPUT: begin
+                next_valid_out = 1'b1;
+                next_data_out  = state_reg[127 -: 32];
+                next_state_reg = {state_reg[95:0], 32'd0};
+                next_word_ctr  = word_ctr + 4'd1;
+                
+                if (word_ctr == 4'd3) begin
+                    next_state = S_IDLE;
                 end
             end
 

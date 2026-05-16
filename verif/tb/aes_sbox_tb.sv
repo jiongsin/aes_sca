@@ -1,50 +1,37 @@
-module aes_sbox_tb;
-    import aes_pkg::*;
-   
-    `ifdef AES_BASE
-        `define VER base
-        `define IS_128BIT
-    `elsif AES_CFA
-        `define VER cfa
-        `define IS_128BIT
-    `elsif AES_DATAPATH32
-        `define VER datapath32
-    `elsif AES_OPT
-        `define VER opt
-    `elsif AES_DOM
-        `define VER dom
-    `elsif AES_SCA
-        `define VER sca
-    `endif
 
+
+module aes_sbox_tb;
+    import aes_sbox_pkg::*;
+    
     bit clk;
     
     always #5ns clk = ~clk;
     
     aes_sbox_if intf(clk);
     
-    `ifdef GLS_SIM
-        `define DUTS_TARGET aes_sbox_```VER``
+    `ifdef AES_SCA
+        aes_sbox_sca dut (
+            .clk         (clk),
+            .data_in_0   (intf.data_in_0),
+            .data_in_1   (intf.data_in_1),
+            .random_bits (intf.random_bits),
+            .data_out_0  (intf.data_out_0),
+            .data_out_1  (intf.data_out_1)
+        );
     `else
-        `define DUTS_TARGET aes_sbox_```VER``
+        aes_sbox_base dut (
+            .data_in  (intf.data_in),
+            .data_out (intf.data_out)
+        );
     `endif
-
-    `DUTS_TARGET dut (
-	`ifdef AES_SCA
-        .clk(clk),
-	.random_bits (intf.random_bits),
-        `endif
-        .data_in (intf.data_in),
-        .data_out(intf.data_out)
-    );
     
     initial begin
         event e_sync;
         mailbox gen2drv = new(1);
         mailbox mon2scb = new();
         
-        aes_sbox_driver     drv = new(intf, gen2drv, e_sync);
-        aes_sbox_monitor    mon = new(intf, mon2scb, e_sync);
+        aes_sbox_driver  drv = new(intf, gen2drv, e_sync);
+        aes_sbox_monitor mon = new(intf, mon2scb, e_sync);
         aes_sbox_scoreboard scb = new(mon2scb);
         
         $display("[%0t] [TOP] Starting AES SBOX Simulation", $time);
@@ -59,18 +46,15 @@ module aes_sbox_tb;
         
         for (int i = 0; i < 256; i++) begin
             aes_sbox_transaction tr = new();
-	    `ifdef TVLA_STATIC
+            
+            `ifdef TVLA_STATIC
                 tr.data_in = 0;
             `else
                 tr.data_in = i;
             `endif
 
-	    `ifdef AES_SCA
-                if(!std::randomize(tr.random_bits)) $fatal("Randomization failed");
-            `endif
-
             gen2drv.put(tr);
-	    @(e_sync);
+            @(e_sync);
         end
     end
 
@@ -86,5 +70,4 @@ module aes_sbox_tb;
             $dumpvars(0, aes_sbox_tb.dut);
         end
     end
-
 endmodule

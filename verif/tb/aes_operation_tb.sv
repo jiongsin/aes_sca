@@ -1,5 +1,5 @@
 module aes_operation_tb;
-    import aes_pkg::*;
+    import aes_operation_pkg::*;
     
     `ifdef AES_256
     parameter MODE = 256;
@@ -11,16 +11,8 @@ module aes_operation_tb;
     
     `ifdef AES_BASE
         `define VER base
-        `define IS_128BIT
-    `elsif AES_CFA
-        `define VER cfa
-        `define IS_128BIT
-    `elsif AES_DATAPATH32
-        `define VER datapath32
     `elsif AES_OPT
         `define VER opt
-    `elsif AES_DOM
-        `define VER dom
     `elsif AES_SCA
         `define VER sca
     `endif
@@ -42,16 +34,6 @@ module aes_operation_tb;
 
     aes_operation_if#(MODE) intf(clk);
     assign intf.rst_n = rst_n;
-
-    /*`ifdef AES_SCA
-    always @(posedge clk) begin
-        if (rst_n) begin
-            if (!std::randomize(intf.random_bits)) begin
-                $display("Randomization failed");
-            end
-        end
-    end
-    `endif*/
 
     `ifdef AES_SCA
     // Local variable to hold randomized values
@@ -118,7 +100,7 @@ module aes_operation_tb;
             $display("[%0t] [TOP] Starting AES-%0d Random Simulation", $time, MODE);
                 
             `ifdef AES_SCA
-                // 1000 encryption cycles = 2000 transactions (Two-Block Interleave)
+                // 1000 encryption cycles = 2000 transactions (Two Block Interleave)
                 for (int i = 0; i < test_count; i++) begin
                     aes_operation_transaction#(MODE) tr_A = new(); 
                     aes_operation_transaction#(MODE) tr_B = new(); 
@@ -136,7 +118,7 @@ module aes_operation_tb;
                         if(!tr_B.randomize()) $fatal("Randomization failed");
                     `endif
                     
-                    // Force the key to be identical for the 2-block cycle
+                    // Force the key to be identical for the 2 block cycle
                     tr_B.key = tr_A.key; 
         
                     gen2drv.put(tr_A); 

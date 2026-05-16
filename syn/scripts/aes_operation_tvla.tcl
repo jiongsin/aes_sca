@@ -48,7 +48,7 @@ set_power_analysis_options -waveform_format out \
                            -waveform_output ./results/${DESIGN_VER}/tvla_${TVLA}/tvla_traces
 update_power
 
-report_power > ./results/${DESIGN_VER}/tvla_${TVLA}/power.rpt
+report_power > ./results/${DESIGN_VER}/reports/power_tvla_${TVLA}.rpt
 
 print_message_info
 

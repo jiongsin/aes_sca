@@ -79,14 +79,13 @@ module aes_operation_opt #(
 
     `ifdef AES_256
         assign current_round_key_word = key_reg[127:96];
-        assign initial_add_rk_word = key_reg[127:96];
     `elsif AES_192
         assign current_round_key_word = key_reg[63:32];
-        assign initial_add_rk_word = key_reg[63:32];
     `else
         assign current_round_key_word = expanded_key_word;
-        assign initial_add_rk_word = key_in;
     `endif
+
+    assign initial_add_rk_word = key_in;
 
     assign round_data_out = (round_cnt == Nr) ? (subbytes_out ^ current_round_key_word) : (mixcolumns_out ^ current_round_key_word);
 
@@ -170,11 +169,7 @@ module aes_operation_opt #(
             case (state)
                 S_IDLE: begin
                     if (valid_in) begin
-                        `ifndef AES_256
-                        `ifndef AES_192
                         state_reg <= {state_reg[95:0], data_in ^ initial_add_rk_word};
-                        `endif
-                        `endif
                         key_reg <= {key_reg[(Nk*32)-33 : 0], key_in};
                     end
                 end
@@ -182,7 +177,7 @@ module aes_operation_opt #(
                 S_LOAD: begin
                     if (valid_in) begin
                         key_reg <= {key_reg[(Nk*32)-33 : 0], key_in};
-                        if (word_cnt >= Nk - 4) begin
+                        if (word_cnt < 3'd4) begin
                             state_reg <= {state_reg[95:0], data_in ^ initial_add_rk_word};
                         end
                     end

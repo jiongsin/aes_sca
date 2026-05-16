@@ -9,7 +9,7 @@ endif
 
 LIBV        ?= 32 # 14
 DESIGN      ?= aes_operation
-VER         ?= opt
+VER         ?= sca
 VER_CAP      = $(shell echo $(VER) | tr a-z A-Z)
 MODE        ?= 128
 ifeq ($(MODE),)

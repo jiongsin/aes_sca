@@ -171,10 +171,10 @@ def merge_results(results_list):
 
 def perform_tvla():
     cycle_duration = 10 * 1000
-    cycles_per_encryption = 99 ;#49
+    cycles_per_encryption = 99 ;#21, 25, 29 | 49, 59, 69 | 99, 119, 139
     encryption_duration = cycle_duration * cycles_per_encryption
     start_time = 90 * 1000
-    resample_dt = 50
+    resample_dt = 20
 
     common_time_axis = np.arange(0, encryption_duration, resample_dt)
 
@@ -200,7 +200,7 @@ def perform_tvla():
     cpu_cores = 16
 
     # Create safe file name with auto numbers
-    base_output = f'{WORKAREA}/syn/{DESIGN_VER}_tvla_analysis'
+    base_output = f'{WORKAREA}/syn/results/{DESIGN_VER}_tvla_analysis'
     extension = '.png'
     output_filename = f'{base_output}{extension}'
     
