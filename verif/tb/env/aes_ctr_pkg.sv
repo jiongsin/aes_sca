@@ -26,42 +26,48 @@ package aes_ctr_pkg;
         endfunction
 
         task run();
+            bit is_continuous = 0;
+            int cycle_count = 0;
             vif.drv_cb.start <= 0;
             vif.drv_cb.valid_in <= 0;
             vif.drv_cb.stop <= 0;
+            
             forever begin
                 aes_ctr_transaction#(MODE) trans;
                 gen2drv.get(trans);
                 
-                @ (vif.drv_cb);
-                vif.drv_cb.start <= 1'b1;
-                @ (vif.drv_cb);
-                vif.drv_cb.start <= 1'b0;
-                vif.drv_cb.valid_in <= 1'b1;
-                
-                for (int i = 0; i < 5; i++) begin
-                    vif.drv_cb.trng_in <= trans.trng[(i*32) +: 32];
+                if (!is_continuous) begin
                     @ (vif.drv_cb);
-                end
-                
-                for (int i = 0; i < (MODE/32); i++) begin
-                    vif.drv_cb.key_in <= trans.key[(i*32) +: 32];
+                    vif.drv_cb.start <= 1'b1;
                     @ (vif.drv_cb);
-                end
-                
-                for (int i = 0; i < 4; i++) begin
-                    vif.drv_cb.nonce_in <= trans.nonce[(i*32) +: 32];
-                    @ (vif.drv_cb);
-                end
-                
-                vif.drv_cb.valid_in <= 1'b0;
-                
-                if (MODE == 256) begin
-                    repeat(12) @ (vif.drv_cb);
-                end else if (MODE == 192) begin
-                    repeat(10) @ (vif.drv_cb);
+                    vif.drv_cb.start <= 1'b0;
+                    vif.drv_cb.valid_in <= 1'b1;
+                    
+                    for (int i = 0; i < 5; i++) begin
+                        vif.drv_cb.trng_in <= trans.trng[(i*32) +: 32];
+                        @ (vif.drv_cb);
+                    end
+                    
+                    for (int i = 0; i < (MODE/32); i++) begin
+                        vif.drv_cb.key_in <= trans.key[(i*32) +: 32];
+                        @ (vif.drv_cb);
+                    end
+                    
+                    for (int i = 0; i < 4; i++) begin
+                        vif.drv_cb.nonce_in <= trans.nonce[(i*32) +: 32];
+                        @ (vif.drv_cb);
+                    end
+                    vif.drv_cb.valid_in <= 1'b0;
+                    
+                    if (MODE == 256) repeat(12) @ (vif.drv_cb);
+                    else if (MODE == 192) repeat(10) @ (vif.drv_cb);
+                    else repeat(8) @ (vif.drv_cb);
+                    
                 end else begin
-                    repeat(8) @ (vif.drv_cb);
+                    vif.drv_cb.valid_in <= 1'b0;
+                    if (MODE == 256) repeat(11) @ (vif.drv_cb);
+                    else if (MODE == 192) repeat(9) @ (vif.drv_cb);
+                    else repeat(7) @ (vif.drv_cb);
                 end
                 
                 vif.drv_cb.valid_in <= 1'b1;
@@ -75,7 +81,16 @@ package aes_ctr_pkg;
                     @ (vif.drv_cb);
                     if (vif.drv_cb.valid_out === 1'b1) break;
                 end
-                vif.drv_cb.stop <= 1'b1;
+                
+                cycle_count++;
+                if (cycle_count == 5) begin
+                    vif.drv_cb.stop <= 1'b1;
+                    is_continuous = 0;
+                    cycle_count = 0;
+                end else begin
+                    vif.drv_cb.stop <= 1'b0;
+                    is_continuous = 1;
+                end
                 
                 @ (vif.drv_cb);
 
@@ -84,8 +99,6 @@ package aes_ctr_pkg;
                     if (vif.drv_cb.valid_out === 1'b0) break;
                 end
                 vif.drv_cb.stop <= 1'b0;
-                
-                @ (vif.drv_cb);
             end
         endtask
     endclass
@@ -101,11 +114,20 @@ package aes_ctr_pkg;
 
         task run();
             aes_ctr_transaction#(MODE) trans;
+            bit is_continuous = 0;
+            bit [255:0] saved_key;
+            bit [127:0] saved_nonce;
+            bit [159:0] saved_trng;
+            
             forever begin
-                @ (vif.mon_cb);
-                if (vif.mon_cb.start === 1'b1) begin
-                    trans = new();
-                    @ (vif.mon_cb);
+                trans = new();
+                
+                if (!is_continuous) begin
+                    forever begin
+                        @ (vif.mon_cb);
+                        if (vif.mon_cb.start === 1'b1) break;
+                    end
+                    @ (vif.mon_cb); 
                     
                     for (int i = 0; i < 5; i++) begin
                         trans.trng[(i*32) +: 32] = vif.mon_cb.trng_in;
@@ -122,31 +144,47 @@ package aes_ctr_pkg;
                         if (i < 3) @ (vif.mon_cb);
                     end
                     
-                    forever begin
-                        @ (vif.mon_cb);
-                        if (vif.mon_cb.valid_in === 1'b1) break;
-                    end
-                    
-                    for (int i = 0; i < 8; i++) begin
-                        trans.plain_text[(i*32) +: 32] = vif.mon_cb.pt_in;
-                        if (i < 7) @ (vif.mon_cb);
-                    end
-                    
-                    forever begin
-                        @ (vif.mon_cb);
-                        if (vif.mon_cb.valid_out === 1'b1) break;
-                    end
-                    
-                    for (int i = 0; i < 8; i++) begin
-                        trans.cipher_text[(i*32) +: 32] = vif.mon_cb.ct_out;
-                        if (i < 7) @ (vif.mon_cb);
-                    end
-                    
-                    mon2scb.put(trans);
+                    saved_key = trans.key;
+                    saved_nonce = trans.nonce;
+                    saved_trng = trans.trng;
+                end else begin
+                    saved_nonce[127:96] = saved_nonce[127:96] + 32'd2;
+                    trans.key = saved_key;
+                    trans.nonce = saved_nonce;
+                    trans.trng = saved_trng;
+                end
+                
+                forever begin
+                    @ (vif.mon_cb);
+                    if (vif.mon_cb.valid_in === 1'b1) break;
+                end
+                
+                for (int i = 0; i < 8; i++) begin
+                    trans.plain_text[(i*32) +: 32] = vif.mon_cb.pt_in;
+                    if (i < 7) @ (vif.mon_cb);
+                end
+                
+                forever begin
+                    @ (vif.mon_cb);
+                    if (vif.mon_cb.valid_out === 1'b1) break;
+                end
+                
+                for (int i = 0; i < 8; i++) begin
+                    trans.cipher_text[(i*32) +: 32] = vif.mon_cb.ct_out;
+                    if (i < 7) @ (vif.mon_cb);
+                end
+                
+                mon2scb.put(trans);
+                
+                if (vif.mon_cb.stop === 1'b0) begin
+                    is_continuous = 1;
+                end else begin
+                    is_continuous = 0;
                 end
             end
         endtask
     endclass
+
     class aes_ctr_scoreboard #(parameter MODE = 128);
         mailbox mon2scb;
         int transaction_count = 0;
@@ -176,7 +214,6 @@ package aes_ctr_pkg;
                 
                 aes_ctr_ref_model(MODE, wide_key, trans.nonce, trans.plain_text, expected_cipher);
 
-                // Split the 256 bit interleaved payload into standard 128 bit blocks
                 pt_block[0]  = trans.plain_text[127:0];
                 pt_block[1]  = trans.plain_text[255:128];
                 
@@ -187,7 +224,6 @@ package aes_ctr_pkg;
                 exp_block[1] = expected_cipher[255:128];
 
                 for (int b = 0; b < 2; b++) begin
-                    // Increment per 128 bit block to match the reference style
                     transaction_count++;
                     
                     `ifdef AES_SCA
@@ -230,7 +266,7 @@ package aes_ctr_pkg;
             $display(" TEST STATUS        : %s", 
                     (mismatch_count == 0 && transaction_count > 0) ? "PASSED" : "FAILED");
             $display("========================================\n");
-	    if (mismatch_count > 0) begin
+            if (mismatch_count > 0) begin
                 $fatal(1, "Test failed!");
             end
         endfunction
