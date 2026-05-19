@@ -62,6 +62,11 @@ module aes_ctr_tb;
         end
 
         $display("[%0t] [TOP] Starting AES CTR Simulation", $time);
+
+        intf.start = 1'b0;
+        intf.valid_in = 1'b0;
+        intf.stop = 1'b0;
+
         rst_n = 0;
         repeat(5) @(negedge clk);
         rst_n = 1;      
@@ -73,13 +78,14 @@ module aes_ctr_tb;
             scb.run();
         join_none
 
+
         begin
             for (int i = 0; i < test_count; i++) begin
                 aes_ctr_transaction#(MODE) tr = new(); 
                 if(!tr.randomize()) $fatal("Randomization failed");
                 gen2drv.put(tr); 
             end
-            wait(scb.transaction_count == test_count);
+            wait(scb.transaction_count >= test_count * 2);
             repeat(10) @(posedge clk);
         end
 

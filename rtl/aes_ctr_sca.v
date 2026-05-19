@@ -29,13 +29,13 @@ module aes_ctr_sca #(
     wire [143:0] random_bits;
     wire prng_valid;
 
-`ifdef AES_256
-    reg [255:0] key_reg, next_key_reg;
-`elsif AES_192
-    reg [191:0] key_reg, next_key_reg;
-`else
-    reg [127:0] key_reg, next_key_reg;
-`endif
+    `ifdef AES_256
+        reg [255:0] key_reg, next_key_reg;
+    `elsif AES_192
+        reg [191:0] key_reg, next_key_reg;
+    `else
+        reg [127:0] key_reg, next_key_reg;
+    `endif
 
     reg [127:0] nonce_reg, next_nonce_reg;
     reg [255:0] pt_reg, next_pt_reg;
@@ -52,13 +52,13 @@ module aes_ctr_sca #(
         if (!rst_n) begin
             state <= S_IDLE;
             count <= 4'd0;
-`ifdef AES_256
+        `ifdef AES_256
             key_reg <= 256'd0;
-`elsif AES_192
+        `elsif AES_192
             key_reg <= 192'd0;
-`else
+        `else
             key_reg <= 128'd0;
-`endif
+        `endif
             nonce_reg <= 128'd0;
             pt_reg <= 256'd0;
         end else begin
@@ -266,7 +266,6 @@ module aes_ctr_sca #(
         end
     end
 
-    // PRNG block added here
     aes_prng_sca u_aes_prng (
         .clk(clk),
         .rst_n(rst_n),

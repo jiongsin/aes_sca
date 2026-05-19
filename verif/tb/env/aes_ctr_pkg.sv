@@ -147,7 +147,6 @@ package aes_ctr_pkg;
             end
         endtask
     endclass
-
     class aes_ctr_scoreboard #(parameter MODE = 128);
         mailbox mon2scb;
         int transaction_count = 0;
@@ -162,33 +161,76 @@ package aes_ctr_pkg;
             bit [255:0] expected_cipher;
             bit [255:0] wide_key;
             
+            bit [127:0] pt_block[2];
+            bit [127:0] ct_block[2];
+            bit [127:0] exp_block[2];
+
+            int cycle_num;
+            string block_id;
+
             forever begin
                 mon2scb.get(trans);
-                transaction_count++;
-                
+
                 wide_key = 0;
                 wide_key[MODE-1:0] = trans.key;
                 
                 aes_ctr_ref_model(MODE, wide_key, trans.nonce, trans.plain_text, expected_cipher);
+
+                // Split the 256 bit interleaved payload into standard 128 bit blocks
+                pt_block[0]  = trans.plain_text[127:0];
+                pt_block[1]  = trans.plain_text[255:128];
                 
-                if (trans.cipher_text === expected_cipher) begin
-                    $display("[%0t] [PASS] Trans %0d | PT: %h | CT: %h", $time, transaction_count, trans.plain_text, trans.cipher_text);
-                end else begin
-                    mismatch_count++;
-                    $error("[%0t] [FAIL] Trans %0d Mismatch | PT: %h | CT: %h | Expected: %h", $time, transaction_count, trans.plain_text, trans.cipher_text, expected_cipher);
+                ct_block[0]  = trans.cipher_text[127:0];
+                ct_block[1]  = trans.cipher_text[255:128];
+                
+                exp_block[0] = expected_cipher[127:0];
+                exp_block[1] = expected_cipher[255:128];
+
+                for (int b = 0; b < 2; b++) begin
+                    // Increment per 128 bit block to match the reference style
+                    transaction_count++;
+                    
+                    `ifdef AES_SCA
+                        cycle_num = ((transaction_count - 1) / 2) + 1;
+                        block_id  = (transaction_count % 2 != 0) ? "A" : "B";
+
+                        if (ct_block[b] === exp_block[b]) begin
+                            $display("[%0t] [PASS] Cycle %0d Block %s Trans %0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
+                                     $time, cycle_num, block_id, transaction_count, pt_block[b], trans.key, ct_block[b]);
+                        end else begin
+                            mismatch_count++;
+                            $error("[%0t] [FAIL] Cycle %0d Block %s Trans %0d Mismatch | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
+                                   $time, cycle_num, block_id, transaction_count, pt_block[b], trans.key, ct_block[b], exp_block[b]);
+                        end
+                    `else
+                        if (ct_block[b] === exp_block[b]) begin
+                            $display("[%0t] [PASS] Trans %0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
+                                     $time, transaction_count, pt_block[b], trans.key, ct_block[b]);
+                        end else begin
+                            mismatch_count++;
+                            $error("[%0t] [FAIL] Trans %0d Mismatch | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
+                                   $time, transaction_count, pt_block[b], trans.key, ct_block[b], exp_block[b]);
+                        end
+                    `endif
                 end
             end
         endtask
 
         function void report();
             $display("\n========================================");
-            $display("      AES %0d CTR VERIFICATION REPORT", MODE);
+            $display("      AES CTR %0d VERIFICATION REPORT", MODE);
             $display("========================================");
-            $display(" Total Transactions : %0d", transaction_count);
+            `ifdef AES_SCA
+                $display(" Total Transactions : %0d", transaction_count);
+                $display(" Total Core Cycles  : %0d", transaction_count / 2);
+            `else
+                $display(" Total Transactions : %0d", transaction_count);
+            `endif
             $display(" Mismatches         : %0d", mismatch_count);
-            $display(" TEST STATUS        : %s", (mismatch_count == 0 && transaction_count > 0) ? "PASSED" : "FAILED");
+            $display(" TEST STATUS        : %s", 
+                    (mismatch_count == 0 && transaction_count > 0) ? "PASSED" : "FAILED");
             $display("========================================\n");
-            if (mismatch_count > 0) begin
+	    if (mismatch_count > 0) begin
                 $fatal(1, "Test failed!");
             end
         endfunction
