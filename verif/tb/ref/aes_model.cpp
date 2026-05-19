@@ -63,6 +63,7 @@ void aes_encrypt_core(int mode, const uint8_t* key_in, const uint8_t* data_in, u
     for (int i = Nk; i < 4 * (Nr + 1); i++) {
         uint8_t temp[4];
         for (int j = 0; j < 4; j++) temp[j] = round_key[(i-1)*4 + j];
+        
         if (i % Nk == 0) {
             uint8_t k = temp[0];
             temp[0] = sbox[temp[1]] ^ Rcon[i/Nk];
@@ -105,148 +106,78 @@ extern "C" void aes_operation_ref_model(int mode, const uint32_t* key_in, const 
     int Nk = mode / 32; 
 
     for (int i = 0; i < 4; i++) {
-        state[i*4+0] = (data_in[3-i] >> 24) & 0xFF;
-        state[i*4+1] = (data_in[3-i] >> 16) & 0xFF;
-        state[i*4+2] = (data_in[3-i] >> 8)  & 0xFF;
-        state[i*4+3] = (data_in[3-i] >> 0)  & 0xFF;
+        state[i*4+0] = (data_in[i] >> 0)  & 0xFF;
+        state[i*4+1] = (data_in[i] >> 8)  & 0xFF;
+        state[i*4+2] = (data_in[i] >> 16) & 0xFF;
+        state[i*4+3] = (data_in[i] >> 24) & 0xFF;
     }
 
     for (int i = 0; i < Nk; i++) {
-        key[i*4+0] = (key_in[(Nk - 1) - i] >> 24) & 0xFF;
-        key[i*4+1] = (key_in[(Nk - 1) - i] >> 16) & 0xFF;
-        key[i*4+2] = (key_in[(Nk - 1) - i] >> 8)  & 0xFF;
-        key[i*4+3] = (key_in[(Nk - 1) - i] >> 0)  & 0xFF;
+        key[i*4+0] = (key_in[i] >> 0)  & 0xFF;
+        key[i*4+1] = (key_in[i] >> 8)  & 0xFF;
+        key[i*4+2] = (key_in[i] >> 16) & 0xFF;
+        key[i*4+3] = (key_in[i] >> 24) & 0xFF;
     }
 
     aes_encrypt_core(mode, key, state, out);
 
     for (int i = 0; i < 4; i++) {
-        data_out[3-i] = (out[i*4+0] << 24) | (out[i*4+1] << 16) | (out[i*4+2] << 8) | out[i*4+3];
+        data_out[i] = (out[i*4+3] << 24) | (out[i*4+2] << 16) | (out[i*4+1] << 8) | out[i*4+0];
     }
 }
 
-void gf_mult(const uint8_t* x, const uint8_t* y, uint8_t* z) {
-    uint8_t v[16];
-    uint8_t res[16] = {0};
-    memcpy(v, y, 16);
-
-    for (int i = 0; i < 16; i++) {
-        for (int j = 7; j >= 0; j--) {
-            if ((x[i] >> j) & 1) {
-                for (int k = 0; k < 16; k++) res[k] ^= v[k];
-            }
-            uint8_t lsb = v[15] & 1;
-            for (int k = 15; k > 0; k--) {
-                v[k] = (v[k] >> 1) | (v[k-1] << 7);
-            }
-            v[0] >>= 1;
-            if (lsb) v[0] ^= 0xE1;
-        }
-    }
-    memcpy(z, res, 16);
-}
-
-void inc32(uint8_t* counter_block) {
-    for (int i = 15; i >= 12; i--) {
-        counter_block[i]++;
-        if (counter_block[i] != 0) break;
-    }
-}
-
-extern "C" void aes_gcm_ref_model(
-    int mode, 
-    const uint32_t* key_in, 
-    const uint32_t* iv_in, 
-    const uint32_t* pt_in, 
-    int num_blocks, 
-    uint32_t* ct_out, 
-    uint32_t* tag_out
-) {
+extern "C" void aes_ctr_ref_model(int mode, const uint32_t* key_in, const uint32_t* nonce_in, const uint32_t* pt_in, uint32_t* ct_out) {
     uint8_t key[32];
-    uint8_t iv[12];
-    uint8_t h[16];
-    uint8_t j0[16] = {0};
-    uint8_t enc_j0[16];
-    uint8_t counter[16];
-    uint8_t ghash[16] = {0};
-    uint8_t zero_block[16] = {0};
+    uint8_t nonce1[16];
+    uint8_t nonce2[16];
+    uint8_t enc_nonce1[16];
+    uint8_t enc_nonce2[16];
+    uint8_t pt[32];
+    uint8_t ct[32];
 
-    int key_words = mode / 32;
-    for (int i = 0; i < key_words; i++) {
-        key[i*4+0] = (key_in[(key_words - 1) - i] >> 24) & 0xFF;
-        key[i*4+1] = (key_in[(key_words - 1) - i] >> 16) & 0xFF;
-        key[i*4+2] = (key_in[(key_words - 1) - i] >> 8)  & 0xFF;
-        key[i*4+3] = (key_in[(key_words - 1) - i] >> 0)  & 0xFF;
-    }
+    int Nk = mode / 32;
 
-    for (int i = 0; i < 3; i++) {
-        iv[i*4+0] = (iv_in[2 - i] >> 24) & 0xFF;
-        iv[i*4+1] = (iv_in[2 - i] >> 16) & 0xFF;
-        iv[i*4+2] = (iv_in[2 - i] >> 8)  & 0xFF;
-        iv[i*4+3] = (iv_in[2 - i] >> 0)  & 0xFF;
-    }
-
-    aes_encrypt_core(mode, key, zero_block, h);
-
-    memcpy(j0, iv, 12);
-    j0[15] = 0x01;
-
-    aes_encrypt_core(mode, key, j0, enc_j0);
-
-    memcpy(counter, j0, 16);
-
-    for (int b = 0; b < num_blocks; b++) {
-        inc32(counter);
-        
-        uint8_t pt_block[16];
-        uint8_t ct_block[16];
-        uint8_t enc_counter[16];
-
-        for (int i = 0; i < 4; i++) {
-            pt_block[i*4+0] = (pt_in[b*4 + (3-i)] >> 24) & 0xFF;
-            pt_block[i*4+1] = (pt_in[b*4 + (3-i)] >> 16) & 0xFF;
-            pt_block[i*4+2] = (pt_in[b*4 + (3-i)] >> 8)  & 0xFF;
-            pt_block[i*4+3] = (pt_in[b*4 + (3-i)] >> 0)  & 0xFF;
-        }
-
-        aes_encrypt_core(mode, key, counter, enc_counter);
-
-        for (int i = 0; i < 16; i++) {
-            ct_block[i] = pt_block[i] ^ enc_counter[i];
-            ghash[i] ^= ct_block[i];
-        }
-
-        gf_mult(ghash, h, ghash);
-
-        for (int i = 0; i < 4; i++) {
-            ct_out[b*4 + (3-i)] = (ct_block[i*4+0] << 24) | 
-                                  (ct_block[i*4+1] << 16) | 
-                                  (ct_block[i*4+2] << 8) | 
-                                  ct_block[i*4+3];
-        }
-    }
-
-    uint8_t len_block[16] = {0};
-    uint64_t bit_len = (uint64_t)num_blocks * 128;
-    for (int i = 0; i < 8; i++) {
-        len_block[15 - i] = (bit_len >> (i * 8)) & 0xFF;
-    }
-
-    for (int i = 0; i < 16; i++) {
-        ghash[i] ^= len_block[i];
-    }
-    
-    gf_mult(ghash, h, ghash);
-
-    uint8_t tag[16];
-    for (int i = 0; i < 16; i++) {
-        tag[i] = ghash[i] ^ enc_j0[i];
+    for (int i = 0; i < Nk; i++) {
+        key[i*4+0] = (key_in[i] >> 0)  & 0xFF;
+        key[i*4+1] = (key_in[i] >> 8)  & 0xFF;
+        key[i*4+2] = (key_in[i] >> 16) & 0xFF;
+        key[i*4+3] = (key_in[i] >> 24) & 0xFF;
     }
 
     for (int i = 0; i < 4; i++) {
-        tag_out[3-i] = (tag[i*4+0] << 24) | 
-                       (tag[i*4+1] << 16) | 
-                       (tag[i*4+2] << 8) | 
-                       tag[i*4+3];
+        nonce1[i*4+0] = (nonce_in[i] >> 0)  & 0xFF;
+        nonce1[i*4+1] = (nonce_in[i] >> 8)  & 0xFF;
+        nonce1[i*4+2] = (nonce_in[i] >> 16) & 0xFF;
+        nonce1[i*4+3] = (nonce_in[i] >> 24) & 0xFF;
+    }
+    
+    for (int i = 0; i < 16; i++) {
+        nonce2[i] = nonce1[i];
+    }
+    
+    uint32_t nonce_lsb = nonce_in[3];
+    nonce_lsb += 1; 
+    nonce2[12] = (nonce_lsb >> 0)  & 0xFF;
+    nonce2[13] = (nonce_lsb >> 8)  & 0xFF;
+    nonce2[14] = (nonce_lsb >> 16) & 0xFF;
+    nonce2[15] = (nonce_lsb >> 24) & 0xFF;
+
+    for (int i = 0; i < 8; i++) {
+        pt[i*4+0] = (pt_in[i] >> 0)  & 0xFF;
+        pt[i*4+1] = (pt_in[i] >> 8)  & 0xFF;
+        pt[i*4+2] = (pt_in[i] >> 16) & 0xFF;
+        pt[i*4+3] = (pt_in[i] >> 24) & 0xFF;
+    }
+
+    aes_encrypt_core(mode, key, nonce1, enc_nonce1);
+    aes_encrypt_core(mode, key, nonce2, enc_nonce2);
+
+    for (int i = 0; i < 16; i++) {
+        ct[i] = pt[i] ^ enc_nonce1[i];
+        ct[16+i] = pt[16+i] ^ enc_nonce2[i];
+    }
+
+    for (int i = 0; i < 8; i++) {
+        ct_out[i] = (ct[i*4+3] << 24) | (ct[i*4+2] << 16) | (ct[i*4+1] << 8) | ct[i*4+0];
     }
 }

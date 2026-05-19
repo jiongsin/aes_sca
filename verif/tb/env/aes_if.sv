@@ -60,3 +60,48 @@ interface aes_operation_if #(parameter MODE = 128) (input logic clk);
         input valid_out, data_out;
     endclocking
 endinterface
+
+
+interface aes_prng_if (input logic clk);
+    logic rst;
+    logic [31:0] trng_in;
+    logic trng_valid;
+    logic [143:0] random_out;
+
+    clocking drv_cb @(posedge clk);
+        default input #1ns output #1ns;
+        output trng_in, trng_valid;
+        input random_out;
+    endclocking
+
+    clocking mon_cb @(posedge clk);
+        default input #1ns output #0;
+        input rst, trng_in, trng_valid, random_out;
+    endclocking
+endinterface
+
+
+interface aes_ctr_if #(parameter MODE = 128) (input logic clk);
+    logic rst_n;
+    logic start;
+    logic valid_in;
+    logic [31:0] trng_in;
+    logic [31:0] key_in;
+    logic [31:0] nonce_in;
+    logic [31:0] pt_in;
+    logic stop;
+    logic valid_out;
+    logic [31:0] ct_out;
+
+    clocking drv_cb @(posedge clk);
+        default input #2.5ns output #2.5ns;
+        output start, valid_in, trng_in, key_in, nonce_in, pt_in, stop;
+        input  valid_out, ct_out;
+    endclocking
+
+    clocking mon_cb @(posedge clk);
+        default input #2.5ns output #0;
+        input start, valid_in, trng_in, key_in, nonce_in, pt_in, stop;
+        input valid_out, ct_out;
+    endclocking
+endinterface

@@ -6,7 +6,7 @@ source ./scripts/dc_lib_setup.tcl
 set version $env(version)
 
 set rtl_files [list \
-    "aes_operation_${version}.v" \
+    "aes_sbox_${version}.v" \
 ]
 
 set rtl_top "aes_sbox_${version}"
@@ -91,7 +91,8 @@ file mkdir ./results/${run_name}
 file mkdir ./results/${run_name}/reports
 
 report_area -physical > ./results/${run_name}/reports/area.rpt
-report_timing -path full -delay max -max_paths 20 > ./results/${run_name}/reports/timing.rpt
+report_timing -path full -delay max -max_paths 10 > ./results/${run_name}/reports/timing_setup.rpt
+report_timing -path full -delay min -max_paths 10 > ./results/${run_name}/reports/timing_hold.rpt
 report_power > ./results/${run_name}/reports/power.rpt
 report_qor > ./results/${run_name}/reports/qor.rpt
 report_constraints -all_violators > ./results/${run_name}/reports/constraints_violators.rpt

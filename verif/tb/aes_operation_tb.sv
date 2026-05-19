@@ -2,11 +2,14 @@ module aes_operation_tb;
     import aes_operation_pkg::*;
     
     `ifdef AES_256
-    parameter MODE = 256;
+        parameter MODE = 256;
+        `define MODE 256
     `elsif AES_192
-    parameter MODE = 192;
+        parameter MODE = 192;
+        `define MODE 192
     `else
-    parameter MODE = 128;
+        parameter MODE = 128;
+        `define MODE 128
     `endif
     
     `ifdef AES_BASE
@@ -15,14 +18,6 @@ module aes_operation_tb;
         `define VER opt
     `elsif AES_SCA
         `define VER sca
-    `endif
-
-    `ifdef AES_256
-        `define MODE 256
-    `elsif AES_192
-        `define MODE 192
-    `else
-        `define MODE 128
     `endif
 
     bit clk;
@@ -36,7 +31,6 @@ module aes_operation_tb;
     assign intf.rst_n = rst_n;
 
     `ifdef AES_SCA
-    // Local variable to hold randomized values
     logic [351:0] rand_bits_local;
 
     always @(posedge clk) begin
@@ -44,7 +38,6 @@ module aes_operation_tb;
             if (!std::randomize(rand_bits_local)) begin
                 $display("Randomization failed");
             end
-            // Drive through the clocking block to apply output skew
             intf.drv_cb.random_bits <= rand_bits_local;
         end
     end
@@ -82,7 +75,7 @@ module aes_operation_tb;
             test_count = 1000;
         end
 
-        $display("[%0t] [TOP] Starting AES-%0d Simulation", $time, MODE);
+        $display("[%0t] [TOP] Starting AES %0d Simulation", $time, MODE);
         rst_n = 0;
         intf.valid_in = 0; 
         repeat(5) @(negedge clk);
@@ -97,10 +90,9 @@ module aes_operation_tb;
 
         begin
             if (!$value$plusargs("COUNT=%d", test_count)) test_count = 1000;
-            $display("[%0t] [TOP] Starting AES-%0d Random Simulation", $time, MODE);
+            $display("[%0t] [TOP] Starting AES %0d Random Simulation", $time, MODE);
                 
             `ifdef AES_SCA
-                // 1000 encryption cycles = 2000 transactions (Two Block Interleave)
                 for (int i = 0; i < test_count; i++) begin
                     aes_operation_transaction#(MODE) tr_A = new(); 
                     aes_operation_transaction#(MODE) tr_B = new(); 
@@ -118,7 +110,6 @@ module aes_operation_tb;
                         if(!tr_B.randomize()) $fatal("Randomization failed");
                     `endif
                     
-                    // Force the key to be identical for the 2 block cycle
                     tr_B.key = tr_A.key; 
         
                     gen2drv.put(tr_A); 
@@ -126,7 +117,6 @@ module aes_operation_tb;
                 end
                 wait(scb.transaction_count == test_count * 2);
             `else
-                // Standard single block flow
                 for (int i = 0; i < test_count; i++) begin
                     aes_operation_transaction#(MODE) tr = new(); 
                     `ifdef TVLA_STATIC

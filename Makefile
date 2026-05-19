@@ -66,7 +66,7 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
                 -Mdir=$(SYN_SIM)/csrc -o $(SYN_SIM)/simv +vcs+fsdbon \
                 +fsdbfile+$(SYN_SIM)/$(DESIGN_VER).fsdb \
                 -sdf max:$(DESIGN)_tb.dut:$(DESIGN_VER).sdf \
-                -l $(SYN_SIM)/compile.log +neg_tchk
+                -l $(SYN_SIM)/compile.log
 		#/home/host/libs/saed32nm/lib/verilog/saed32nm_hvt.v \
                 #/home/host/libs/saed32nm/lib/verilog/saed32nm_lvt.v \
                 #/home/host/libs/saed32nm/lib/verilog/saed32nm.v \
@@ -82,9 +82,9 @@ VCS_SYN_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 PT_SHELL      = pt_shell
 
 # Targets
-.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp repeat debug help
+.PHONY: all libv sim verdi saif syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp repeat debug help
 
-all: sim syn syn.alp
+all: sim saif syn syn.alp
 
 libv:
 	@cp syn/scripts/dc_lib_setup_$(LIBV)nm.tcl syn/scripts/dc_lib_setup.tcl
@@ -102,13 +102,16 @@ sim:
 	 -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +COUNT=$(TEST_CNT)
-	@cd $(SIMV_DIR) && \
-	fsdb2saif $(DESIGN_VER).fsdb -o $(DESIGN_VER).saif
 
 verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
 	@cd $(SIMV_DIR) && \
 	 $(VERDI) $(VERDI_FLAGS) 
+
+saif:
+	@echo "Starting fsdb2saif Conversion for $(DESIGN_VER)..."
+	@cd $(SIMV_DIR) && \
+	fsdb2saif $(DESIGN_VER).fsdb -o $(DESIGN_VER).saif
 
 syn:
 	@echo "Starting Synthesis for $(DESIGN_VER)..."
@@ -129,8 +132,10 @@ syn.sim:
 	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
-	 +define+TVLA_$(TVLA_CAP) +xprop=tmerge
-	 # +DUMP_VCD +nospecify +notimingcheck +delay_mode_zero
+	 +define+TVLA_$(TVLA_CAP) +neg_tchk -negdelay 
+	 # +notimingcheck +sdf_verbose +pulse_r/0 +pulse_e/0
+	 # +nospecify +delay_mode_zero +xprop=tmerge
+	 # +DUMP_VCD
 
 syn.verdi:
 	@echo "Starting Waveform Viewer for $(DESIGN_VER)..."
@@ -155,7 +160,9 @@ syn.psim:
 
 syn.tvla:
 	@echo "Starting Leakage Assessment for $(DESIGN_VER)..."
-	@export DESIGN_VER=$(DESIGN_VER) && \
+	@export VER=$(VER) && \
+	 export MODE=$(MODE) && \
+	 export DESIGN_VER=$(DESIGN_VER) && \
 	 cd $(SYN_DIR)/scripts && \
 	 if [ -d venv ]; then source venv/bin/activate; fi && \
 	 python3 $(DESIGN)_tvla.py

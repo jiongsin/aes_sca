@@ -4,5 +4,6 @@ syn/*
 !syn/scripts/
 syn/scripts/venv
 rtl/lints/
+rtl/arm_trng
 pnr/* 
 !pnr/scripts

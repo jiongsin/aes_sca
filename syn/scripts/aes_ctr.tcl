@@ -6,8 +6,8 @@ source ./scripts/dc_lib_setup.tcl
 set mode $env(mode)
 set version $env(version)
 
-set rtl_files [list "aes_operation_${version}.v" "aes_sbox_${version}.v"]
-set rtl_top "aes_operation_${version}"
+set rtl_files [list "aes_ctr_${version}.v" "aes_operation_${version}.v" "aes_sbox_${version}.v"]
+set rtl_top "aes_ctr_${version}"
 
 set ver_define [string toupper "AES_${version}"]
 set mode_define "AES_${mode}"
@@ -28,7 +28,7 @@ if {[check_design] == 0} { echo "Error: Check Design Failed"; exit 1 }
 # =====================================================================
 # 2. APPLY CONSTRAINTS
 # =====================================================================
-source -echo -verbose ./scripts/constraints/aes_operation_cons.tcl
+source -echo -verbose ./scripts/constraints/aes_ctr_cons.tcl
 
 # =====================================================================
 # 3. SCA PRESERVATION CONSTRAINTS
@@ -90,7 +90,7 @@ if {[shell_is_in_topographical_mode]} {
 }
 
 set run_name "${rtl_top}_MODE${mode}_${period}ns"
-read_saif -input ../verif/sim/${run_name}/${run_name}.saif -instance_name aes_operation_tb/dut
+read_saif -input ../verif/sim/${run_name}/${run_name}.saif -instance_name aes_ctr_tb/dut
 
 set_cost_priority -delay
 set_dynamic_optimization true 

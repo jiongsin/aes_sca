@@ -170,8 +170,21 @@ def merge_results(results_list):
     return total_mean, total_var, total_n
 
 def perform_tvla():
+    VER = os.environ.get('VER')
+    MODE = os.environ.get('MODE')
+
+    cycles_map = {
+        'base': {'128': 21, '192': 25, '256': 29},
+        'opt': {'128': 49, '192': 59, '256': 69},
+        'sca': {'128': 99, '192': 119, '256': 139}
+    }
+
+    if VER in cycles_map and MODE in cycles_map[VER]:
+        cycles_per_encryption = cycles_map[VER][MODE]
+    else:
+        raise ValueError("Unknown VER or MODE provided")
+
     cycle_duration = 10 * 1000
-    cycles_per_encryption = 99 ;#21, 25, 29 | 49, 59, 69 | 99, 119, 139
     encryption_duration = cycle_duration * cycles_per_encryption
     start_time = 90 * 1000
     resample_dt = 20

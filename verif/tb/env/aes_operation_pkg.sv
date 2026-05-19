@@ -65,30 +65,27 @@ package aes_operation_pkg;
                 gen2drv.get(trans_A);
                 gen2drv.get(trans_B);
                 
-                @(vif.drv_cb);
+                @ (vif.drv_cb);
                 vif.drv_cb.valid_in <= 1'b1;
                 
+                // Little Endian Drive (Word 0 to Word Nk-1)
                 for (int i = 0; i < (MODE/32); i++) begin
-                    vif.drv_cb.key_in <= trans_A.key[MODE - 1 - (i*32) -: 32];
+                    vif.drv_cb.key_in <= trans_A.key[(i*32) +: 32];
                     if (i < 4) begin
-                        vif.drv_cb.data_in <= trans_A.plain_text[127 - (i*32) -: 32];
+                        vif.drv_cb.data_in <= trans_A.plain_text[(i*32) +: 32];
                     end else begin
                         vif.drv_cb.data_in <= 32'd0;
                     end
-                    if (i < (MODE/32) - 1) @(vif.drv_cb);
+                    if (i < (MODE/32) - 1) @ (vif.drv_cb);
                 end
-                @(vif.drv_cb);
+                @ (vif.drv_cb);
                 
-                for (int i = 0; i < (MODE/32); i++) begin
-                    vif.drv_cb.key_in <= trans_B.key[MODE - 1 - (i*32) -: 32];
-                    if (i < 4) begin
-                        vif.drv_cb.data_in <= trans_B.plain_text[127 - (i*32) -: 32];
-                    end else begin
-                        vif.drv_cb.data_in <= 32'd0;
-                    end
-                    if (i < (MODE/32) - 1) @(vif.drv_cb);
+                for (int i = 0; i < 4; i++) begin
+                    vif.drv_cb.key_in <= 32'd0; 
+                    vif.drv_cb.data_in <= trans_B.plain_text[(i*32) +: 32];
+                    if (i < 3) @ (vif.drv_cb);
                 end
-                @(vif.drv_cb);
+                @ (vif.drv_cb);
                 
                 vif.drv_cb.valid_in <= 1'b0;
                 
@@ -99,23 +96,23 @@ package aes_operation_pkg;
                 aes_operation_transaction#(MODE) trans;
                 gen2drv.get(trans);
             
-                @(vif.drv_cb);
+                @ (vif.drv_cb);
                 vif.drv_cb.valid_in <= 1'b1;
                 
                 for (int i = 0; i < (MODE/32); i++) begin
-                    vif.drv_cb.key_in <= trans.key[MODE - 1 - (i*32) -: 32];
+                    vif.drv_cb.key_in <= trans.key[(i*32) +: 32];
                     if (i < 4) begin
-                        vif.drv_cb.data_in <= trans.plain_text[127 - (i*32) -: 32];
+                        vif.drv_cb.data_in <= trans.plain_text[(i*32) +: 32];
                     end else begin
                         vif.drv_cb.data_in <= 32'd0;
                     end
-                    if (i < (MODE/32) - 1) @(vif.drv_cb);
+                    if (i < (MODE/32) - 1) @ (vif.drv_cb);
                 end
-                @(vif.drv_cb);
+                @ (vif.drv_cb);
                 vif.drv_cb.valid_in <= 1'b0;
                 
                 wait(vif.mon_cb.valid_out == 1'b1);
-                @(vif.mon_cb);
+                @ (vif.mon_cb);
                 `endif
             end
         endtask
@@ -141,56 +138,72 @@ package aes_operation_pkg;
 
         task run();
             `ifdef AES_SCA
+            bit is_block_b = 0;
+            bit [MODE-1:0] saved_key;
+            
             fork
                 forever begin
-                    @(vif.mon_cb);
+                    @ (vif.mon_cb);
                     if (vif.mon_cb.valid_in === 1'b1) begin
                         aes_operation_transaction#(MODE) trans = new();
                         trans.key = 0;
                         trans.plain_text = 0;
-                        for (int i = 0; i < (MODE/32); i++) begin
-                            trans.key[MODE - 1 - (i*32) -: 32] = vif.mon_cb.key_in;
-                            if (i < 4) begin
-                                trans.plain_text[127 - (i*32) -: 32] = vif.mon_cb.data_in;
+                        
+                        if (!is_block_b) begin
+                            for (int i = 0; i < (MODE/32); i++) begin
+                                trans.key[(i*32) +: 32] = vif.mon_cb.key_in;
+                                if (i < 4) begin
+                                    trans.plain_text[(i*32) +: 32] = vif.mon_cb.data_in;
+                                end
+                                trans.random_bits = vif.mon_cb.random_bits;
+                                if (i < (MODE/32) - 1) @ (vif.mon_cb);
                             end
-                            trans.random_bits = vif.mon_cb.random_bits;
-                            if (i < (MODE/32) - 1) @(vif.mon_cb);
+                            saved_key = trans.key;
+                            is_block_b = 1;
+                        end else begin
+                            trans.key = saved_key;
+                            for (int i = 0; i < 4; i++) begin
+                                trans.plain_text[(i*32) +: 32] = vif.mon_cb.data_in;
+                                trans.random_bits = vif.mon_cb.random_bits;
+                                if (i < 3) @ (vif.mon_cb);
+                            end
+                            is_block_b = 0;
                         end
                         trans_q.push_back(trans);
                     end
                 end
                 
                 forever begin
-                    @(vif.mon_cb);
+                    @ (vif.mon_cb);
                     if (vif.mon_cb.valid_out === 1'b1) begin
                         aes_operation_transaction#(MODE) trans;
                         wait(trans_q.size() > 0);
                         trans = trans_q.pop_front();
                         
                         for (int i = 0; i < 4; i++) begin
-                            trans.cipher_text[127 - (i*32) -: 32] = vif.mon_cb.data_out;
-                            if (i < 3) @(vif.mon_cb);
+                            trans.cipher_text[(i*32) +: 32] = vif.mon_cb.data_out;
+                            if (i < 3) @ (vif.mon_cb);
                         end
                         
                         mon2scb.put(trans);
-                        ->next_item;
+                        -> next_item;
                     end
                 end
             join_none
             `else
             aes_operation_transaction#(MODE) trans;
             forever begin
-                @(vif.mon_cb);
+                @ (vif.mon_cb);
                 case (state)
                     IDLE: begin
                         if (vif.mon_cb.valid_in === 1'b1) begin
                             trans = new();
                             for (int i = 0; i < (MODE/32); i++) begin
-                                trans.key[MODE - 1 - (i*32) -: 32] = vif.mon_cb.key_in;
+                                trans.key[(i*32) +: 32] = vif.mon_cb.key_in;
                                 if (i < 4) begin
-                                    trans.plain_text[127 - (i*32) -: 32] = vif.mon_cb.data_in;
+                                    trans.plain_text[(i*32) +: 32] = vif.mon_cb.data_in;
                                 end
-                                if (i < (MODE/32) - 1) @(vif.mon_cb);
+                                if (i < (MODE/32) - 1) @ (vif.mon_cb);
                             end
                             state = WAIT_OUTPUT;
                         end
@@ -199,11 +212,11 @@ package aes_operation_pkg;
                     WAIT_OUTPUT: begin
                         if (vif.mon_cb.valid_out === 1'b1) begin
                             for (int i = 0; i < 4; i++) begin
-                                trans.cipher_text[127 - (i*32) -: 32] = vif.mon_cb.data_out;
-                                if (i < 3) @(vif.mon_cb);
+                                trans.cipher_text[(i*32) +: 32] = vif.mon_cb.data_out;
+                                if (i < 3) @ (vif.mon_cb);
                             end
                             mon2scb.put(trans);
-                            ->next_item;
+                            -> next_item;
                             state = CLEANUP;
                         end
                     end
@@ -244,6 +257,8 @@ package aes_operation_pkg;
 
                 wide_key = 0;
                 wide_key[MODE-1:0] = trans.key;
+                
+                // Directly pass native arrays (No more swap_bytes)
                 aes_operation_ref_model(MODE, wide_key, trans.plain_text, expected_cipher);
 
                 `ifdef AES_SCA
@@ -251,20 +266,20 @@ package aes_operation_pkg;
                     block_id  = (transaction_count % 2 != 0) ? "A" : "B";
 
                     if (trans.cipher_text === expected_cipher) begin
-                        $display("[%0t] [PASS] Cycle #%0d Block %s (Trans #%0d) | Plaintext: %h | Key: %h | Ciphertext: %h", 
+                        $display("[%0t] [PASS] Cycle %0d Block %s Trans %0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
                                  $time, cycle_num, block_id, transaction_count, trans.plain_text, trans.key, trans.cipher_text);
                     end else begin
                         mismatch_count++;
-                        $error("[%0t] [FAIL] Cycle #%0d Block %s (Trans #%0d) Mismatch! | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
+                        $error("[%0t] [FAIL] Cycle %0d Block %s Trans %0d Mismatch | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
                                $time, cycle_num, block_id, transaction_count, trans.plain_text, trans.key, trans.cipher_text, expected_cipher);
                     end
                 `else
                     if (trans.cipher_text === expected_cipher) begin
-                        $display("[%0t] [PASS] Trans #%0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
+                        $display("[%0t] [PASS] Trans %0d | Plaintext: %h | Key: %h | Ciphertext: %h", 
                                  $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text);
                     end else begin
                         mismatch_count++;
-                        $error("[%0t] [FAIL] Trans #%0d Mismatch! | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
+                        $error("[%0t] [FAIL] Trans %0d Mismatch | Plaintext: %h | Key: %h | Ciphertext: %h | Expected Ciphertext: %h", 
                                $time, transaction_count, trans.plain_text, trans.key, trans.cipher_text, expected_cipher);
                     end
                 `endif
@@ -285,6 +300,9 @@ package aes_operation_pkg;
             $display(" TEST STATUS        : %s", 
                     (mismatch_count == 0 && transaction_count > 0) ? "PASSED" : "FAILED");
             $display("========================================\n");
+	    if (mismatch_count > 0) begin
+                $fatal(1, "Test failed!");
+            end
         endfunction
     endclass
 
