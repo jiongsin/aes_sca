@@ -31,7 +31,7 @@ module aes_operation_tb;
     assign intf.rst_n = rst_n;
 
     `ifdef AES_SCA
-    logic [351:0] rand_bits_local;
+    logic [143:0] rand_bits_local;
 
     always @(posedge clk) begin
         if (rst_n) begin
@@ -77,7 +77,12 @@ module aes_operation_tb;
 
         $display("[%0t] [TOP] Starting AES %0d Simulation", $time, MODE);
         rst_n = 0;
-        intf.valid_in = 0; 
+        intf.valid_in = 0;
+        intf.key_in    = 32'd0;
+        intf.data_in   = 32'd0;
+        `ifdef AES_SCA
+        intf.random_bits = 144'd0;
+        `endif
         repeat(5) @(negedge clk);
         rst_n = 1;      
         repeat(5) @(posedge clk); 

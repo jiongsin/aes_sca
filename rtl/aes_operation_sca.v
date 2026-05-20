@@ -34,10 +34,8 @@ module aes_operation_sca #(
     reg [127:0] state_reg_A_0, state_reg_A_1;
     reg [127:0] state_reg_B_0, state_reg_B_1;
     
-    // Key history register for little endian layout
     reg [(MODE)-1:0] key_reg_0, key_reg_1;
     
-    // Stable 4 word window for datapath AddRoundKey
     reg [127:0] round_key_reg_0, round_key_reg_1;
 
     wire [31:0] shifted_col_A_0, shifted_col_A_1;
@@ -374,7 +372,6 @@ module aes_key_expansion_sca #(
 
     wire [5:0] i = ((round_idx - 4'd1) * 4) + step_idx + Nk;
 
-    // Swapped positions for little endian tracking layout
     wire [31:0] first_word_0 = full_key_0[31:0];
     wire [31:0] last_word_0  = full_key_0[MODE-1 : MODE-32];
     wire [31:0] first_word_1 = full_key_1[31:0];

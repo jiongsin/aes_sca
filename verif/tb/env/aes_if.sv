@@ -94,14 +94,11 @@ interface aes_ctr_if #(parameter MODE = 128) (input logic clk);
     logic [31:0] ct_out;
 
     clocking drv_cb @(posedge clk);
-        default input #2.5ns output #2.5ns;
         output start, valid_in, trng_in, key_in, nonce_in, pt_in, stop;
-        input  valid_out, ct_out;
+        input valid_out, ct_out;
     endclocking
 
     clocking mon_cb @(posedge clk);
-        default input #2.5ns output #0;
-        input start, valid_in, trng_in, key_in, nonce_in, pt_in, stop;
-        input valid_out, ct_out;
+        input start, valid_in, trng_in, key_in, nonce_in, pt_in, stop, valid_out, ct_out;
     endclocking
 endinterface

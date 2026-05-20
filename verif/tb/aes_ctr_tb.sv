@@ -1,6 +1,6 @@
 module aes_ctr_tb;
     import aes_ctr_pkg::*;
-    
+
     `ifdef AES_256
         parameter MODE = 256;
         `define MODE 256
@@ -40,7 +40,9 @@ module aes_ctr_tb;
         .rst_n      (intf.rst_n),
         .start      (intf.start),
         .valid_in   (intf.valid_in),
+    `ifdef AES_SCA
         .trng_in    (intf.trng_in),
+    `endif
         .key_in     (intf.key_in),
         .nonce_in   (intf.nonce_in),
         .pt_in      (intf.pt_in),
@@ -50,12 +52,15 @@ module aes_ctr_tb;
     );
 
     initial begin
-        mailbox gen2drv = new(10); 
+        mailbox gen2drv = new(10);
         mailbox mon2scb = new();
 
         aes_ctr_driver#(MODE)     drv = new(intf, gen2drv);
         aes_ctr_monitor#(MODE)    mon = new(intf, mon2scb);
         aes_ctr_scoreboard#(MODE) scb = new(mon2scb);
+
+        int total_transactions;
+        int expected_scoreboard_count;
 
         if (!$value$plusargs("COUNT=%d", test_count)) begin
             test_count = 1000;
@@ -63,14 +68,21 @@ module aes_ctr_tb;
 
         $display("[%0t] [TOP] Starting AES CTR Simulation", $time);
 
-        intf.start = 1'b0;
+        intf.start    = 1'b0;
         intf.valid_in = 1'b0;
-        intf.stop = 1'b0;
+        intf.stop     = 1'b0;
+        intf.key_in   = 32'd0;
+        intf.nonce_in = 32'd0;
+        intf.pt_in    = 32'd0;
 
-        rst_n = 0;
-        repeat(5) @(negedge clk);
-        rst_n = 1;      
-        repeat(5) @(posedge clk); 
+        `ifdef AES_SCA
+            intf.trng_in = 32'd0;
+        `endif
+
+        rst_n = 1'b0;
+        repeat (5) @(negedge clk);
+        rst_n = 1'b1;
+        repeat (5) @(posedge clk);
 
         fork
             drv.run();
@@ -78,25 +90,37 @@ module aes_ctr_tb;
             scb.run();
         join_none
 
+        total_transactions = test_count * 3;
 
-        begin
-            for (int i = 0; i < test_count; i++) begin
-                aes_ctr_transaction#(MODE) tr = new(); 
-                if(!tr.randomize()) $fatal("Randomization failed");
-                gen2drv.put(tr); 
+        `ifdef AES_SCA
+            expected_scoreboard_count = total_transactions * 2;
+        `else
+            expected_scoreboard_count = total_transactions;
+        `endif
+
+        for (int i = 0; i < total_transactions; i++) begin
+            aes_ctr_transaction#(MODE) tr = new();
+
+            if (!tr.randomize()) begin
+                $fatal(1, "Randomization failed");
             end
-            wait(scb.transaction_count >= test_count * 2);
-            repeat(10) @(posedge clk);
+
+            gen2drv.put(tr);
         end
 
-        scb.report(); 
+        wait (scb.transaction_count >= expected_scoreboard_count);
+
+        repeat (10) @(posedge clk);
+
+        scb.report();
         $finish;
     end
-    
+
     initial begin
         if ($test$plusargs("DUMP_VCD")) begin
             $dumpfile("./sim/aes_ctr.vcd");
             $dumpvars(0, aes_ctr_tb.dut);
         end
     end
+
 endmodule

@@ -126,14 +126,14 @@ extern "C" void aes_operation_ref_model(int mode, const uint32_t* key_in, const 
     }
 }
 
-extern "C" void aes_ctr_ref_model(int mode, const uint32_t* key_in, const uint32_t* nonce_in, const uint32_t* pt_in, uint32_t* ct_out) {
+extern "C" void aes_ctr_ref_model(int mode, int num_blocks, const uint32_t* key_in, const uint32_t* nonce_in, const uint32_t* pt_in, uint32_t* ct_out) {
     uint8_t key[32];
     uint8_t nonce1[16];
     uint8_t nonce2[16];
     uint8_t enc_nonce1[16];
     uint8_t enc_nonce2[16];
     uint8_t pt[32];
-    uint8_t ct[32];
+    uint8_t ct[64] = {0};
 
     int Nk = mode / 32;
 
@@ -155,14 +155,16 @@ extern "C" void aes_ctr_ref_model(int mode, const uint32_t* key_in, const uint32
         nonce2[i] = nonce1[i];
     }
     
-    uint32_t nonce_lsb = nonce_in[3];
+    uint32_t nonce_lsb = nonce_in[0];
     nonce_lsb += 1; 
-    nonce2[12] = (nonce_lsb >> 0)  & 0xFF;
-    nonce2[13] = (nonce_lsb >> 8)  & 0xFF;
-    nonce2[14] = (nonce_lsb >> 16) & 0xFF;
-    nonce2[15] = (nonce_lsb >> 24) & 0xFF;
+    nonce2[0] = (nonce_lsb >> 0)  & 0xFF;
+    nonce2[1] = (nonce_lsb >> 8)  & 0xFF;
+    nonce2[2] = (nonce_lsb >> 16) & 0xFF;
+    nonce2[3] = (nonce_lsb >> 24) & 0xFF;
 
-    for (int i = 0; i < 8; i++) {
+    int blocks_to_process = (num_blocks > 2) ? 2 : num_blocks;
+
+    for (int i = 0; i < blocks_to_process * 4; i++) {
         pt[i*4+0] = (pt_in[i] >> 0)  & 0xFF;
         pt[i*4+1] = (pt_in[i] >> 8)  & 0xFF;
         pt[i*4+2] = (pt_in[i] >> 16) & 0xFF;
@@ -170,14 +172,18 @@ extern "C" void aes_ctr_ref_model(int mode, const uint32_t* key_in, const uint32
     }
 
     aes_encrypt_core(mode, key, nonce1, enc_nonce1);
-    aes_encrypt_core(mode, key, nonce2, enc_nonce2);
+    if (num_blocks > 1) {
+        aes_encrypt_core(mode, key, nonce2, enc_nonce2);
+    }
 
     for (int i = 0; i < 16; i++) {
         ct[i] = pt[i] ^ enc_nonce1[i];
-        ct[16+i] = pt[16+i] ^ enc_nonce2[i];
+        if (num_blocks > 1) {
+            ct[16+i] = pt[16+i] ^ enc_nonce2[i];
+        }
     }
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < blocks_to_process * 4; i++) {
         ct_out[i] = (ct[i*4+3] << 24) | (ct[i*4+2] << 16) | (ct[i*4+1] << 8) | ct[i*4+0];
     }
 }
