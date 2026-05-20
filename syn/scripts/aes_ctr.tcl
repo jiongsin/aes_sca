@@ -99,7 +99,7 @@ set_fix_hold [get_clocks clk]
 
 # Enable Clock Gating for Power Savings
 if { $version == "sca" } {
-    set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated} -control_point before -control_signal ;#scan_enable
+    set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated} -control_point before
     insert_clock_gating
 }
 
