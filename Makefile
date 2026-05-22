@@ -97,7 +97,7 @@ sim:
 	@rm -rf $(SIM_DIR)/$(DESIGN_VER)
 	@mkdir -p $(SIM_DIR)/$(DESIGN_VER)
 	@cd $(SIM_DIR) && \
-	 $(VCS) $(VCS_FLAGS) $(VCS_TIME) $(ARGS) \
+	 $(VCS) $(VCS_FLAGS) $(VCS_TIME) $(ARGS) +vcs+lic+wait \
 	 -f $(WORKAREA)/rtl/filelist.f \
 	 -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb \
@@ -128,7 +128,7 @@ syn.sim:
 	@rm -rf $(SYN_SIM)
 	@mkdir -p $(SYN_SIM)
 	@cd $(SYN_RES) && \
-	 $(VCS) $(VCS_SYN_FLAGS) $(VCS_TIME) $(ARGS) \
+	 $(VCS) $(VCS_SYN_FLAGS) $(VCS_TIME) $(ARGS) +vcs+lic+wait \
 	 $(SYN_NTL) -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb +COUNT=$(TEST_CNT) \
 	 +define+AES_$(MODE) +define+AES_$(VER_CAP) +define+GLS_SIM \
