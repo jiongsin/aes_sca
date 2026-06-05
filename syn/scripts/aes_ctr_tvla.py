@@ -174,9 +174,9 @@ def perform_tvla():
     MODE = os.environ.get('MODE')
 
     cycles_map = {
-        'base': {'128': 65, '192': 79, '256': 93},
+        'base': {'128': 47, '192': 61, '256': 75},
         'opt': {'128': 0, '192': 0, '256': 0},
-        'sca': {'128': 310, '192': 372, '256': 434}
+        'sca': {'128': 212, '192': 274, '256': 336}
     }
 
     if VER in cycles_map and MODE in cycles_map[VER]:

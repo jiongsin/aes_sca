@@ -10,7 +10,7 @@ $WORKAREA/rtl/aes_operation_sca.v
 $WORKAREA/rtl/aes_ctr_base.v
 $WORKAREA/rtl/aes_ctr_sca.v
 
-// $WORKAREA/rtl/aes_ctr_ahb.v
+$WORKAREA/rtl/aes_ahb_lite_dma_sca.v
 
 +incdir+$WORKAREA/rtl/
 

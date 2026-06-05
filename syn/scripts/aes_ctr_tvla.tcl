@@ -27,9 +27,9 @@ read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}.sdf
 set_app_var power_analysis_mode time_based
 
 read_fsdb ./results/${DESIGN_VER}/sim_${TVLA}/${DESIGN_VER}.fsdb \
-    -strip_path aes_operation_tb/dut
-# read_vcd ./results/${DESIGN_VER}/sim_${TVLA}/aes_operation.vcd \
-    -strip_path aes_operation_tb/dut
+    -strip_path aes_ctr_tb/dut
+# read_vcd ./results/${DESIGN_VER}/sim_${TVLA}/aes_ctr.vcd \
+    -strip_path aes_ctr_tb/dut
 
 # Check and Report Activity
 report_switching_activity > ./results/${DESIGN_VER}/tvla_${TVLA}/switching_activity.rpt
@@ -44,7 +44,7 @@ check_power
 # update_power
 
 set_power_analysis_options -waveform_format out \
-                           -waveform_interval 0.01 \
+                           -waveform_interval 0.001 \
                            -waveform_output ./results/${DESIGN_VER}/tvla_${TVLA}/tvla_traces
 update_power
 

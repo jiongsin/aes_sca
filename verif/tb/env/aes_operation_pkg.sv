@@ -1,4 +1,3 @@
-
 package aes_operation_pkg;
 
     import "DPI-C" function void aes_operation_ref_model(

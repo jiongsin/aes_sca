@@ -1,3 +1,5 @@
+`ifdef AES_OPERATION
+
 module aes_operation_tb;
     import aes_operation_pkg::*;
     
@@ -160,3 +162,5 @@ module aes_operation_tb;
         end
     end
 endmodule
+
+`endif

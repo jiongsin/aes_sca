@@ -1,3 +1,5 @@
+`ifdef AES_PRNG
+
 module aes_prng_tb;
     bit clk;
     int test_count;
@@ -11,7 +13,7 @@ module aes_prng_tb;
     // Design Under Test Instantiation
     aes_prng_sca dut (
         .clk         (intf.clk),
-        .rst         (intf.rst),
+        .rst_n       (intf.rst_n),
         .trng_in     (intf.trng_in),
         .trng_valid  (intf.trng_valid),
         .random_out  (intf.random_out)
@@ -39,11 +41,11 @@ module aes_prng_tb;
         join_none
 
         // Assert Reset Hardware State
-        intf.rst = 1;
+        intf.rst_n = 0;
         intf.trng_valid = 0;
         intf.trng_in = 0;
         repeat(5) @(negedge clk);
-        intf.rst = 0;
+        intf.rst_n = 1;
         repeat(1) @(posedge clk);
 
         // Stimulus Generation Loop
@@ -61,3 +63,5 @@ module aes_prng_tb;
         $finish;
     end
 endmodule
+
+`endif

@@ -2,7 +2,7 @@ package aes_prng_pkg;
 
     // Transaction Object
     class aes_prng_transaction;
-        bit rst;
+        bit rst_n;
         rand bit [31:0] trng_in;
         rand bit trng_valid;
         bit [143:0] random_out;
@@ -47,7 +47,7 @@ package aes_prng_pkg;
             forever begin
                 aes_prng_transaction trans = new();
                 @(vif.mon_cb);
-                trans.rst        = vif.mon_cb.rst;
+                trans.rst_n      = vif.mon_cb.rst_n;
                 trans.trng_in    = vif.mon_cb.trng_in;
                 trans.trng_valid = vif.mon_cb.trng_valid;
                 trans.random_out = vif.mon_cb.random_out;
@@ -89,7 +89,7 @@ package aes_prng_pkg;
             forever begin
                 mon2scb.get(trans);
 
-                if (trans.rst) begin
+                if (trans.rst_n) begin
                     b1 = 32'd1;
                     b2 = 32'd2;
                     b3 = 32'd3;

@@ -12,7 +12,7 @@ set DESIGN_VER $env(DESIGN_VER)
 
 file mkdir ./results/${DESIGN_VER}/tvla_${TVLA}
 
-read_verilog ${DESIGN_VER}_ntl.v
+read_verilog ${DESIGN_VER}.v
 link_design ${NTL}
 current_design ${NTL}
 

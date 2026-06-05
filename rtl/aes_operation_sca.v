@@ -332,9 +332,6 @@ module aes_operation_sca #(
     end
 
     always @(*) begin
-        valid_out = 1'b0;
-        data_out = 32'd0;
-        
         if (state == S_ROUND && round_cnt == Nr && cycle_cnt >= 4'd5 && cycle_cnt <= 4'd8) begin
             valid_out = 1'b1;
             data_out = round_data_out_0 ^ round_data_out_1;
@@ -342,7 +339,10 @@ module aes_operation_sca #(
         else if (state == S_OUTPUT && cycle_cnt < 4'd4) begin
             valid_out = 1'b1;
             data_out = round_data_out_0 ^ round_data_out_1;
-        end
+        end else begin
+            valid_out = 1'b0;
+            data_out = 32'd0;
+	end
     end
 endmodule
 

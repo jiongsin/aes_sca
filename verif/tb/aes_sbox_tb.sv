@@ -1,4 +1,4 @@
-
+`ifdef AES_SBOX
 
 module aes_sbox_tb;
     import aes_sbox_pkg::*;
@@ -71,3 +71,5 @@ module aes_sbox_tb;
         end
     end
 endmodule
+
+`endif

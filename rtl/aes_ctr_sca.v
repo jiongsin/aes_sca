@@ -5,53 +5,49 @@ module aes_ctr_sca #(
     input rst_n,
     input start,
     input valid_in,
-    input [31:0] trng_in,
-    input [31:0] key_in,
-    input [31:0] nonce_in,
+    input [159:0] trng_in,
+    input [MODE-1:0] key_in,
+    input [127:0] nonce_in,
     input [31:0] pt_in,
     input stop,
     output reg valid_out,
     output reg [31:0] ct_out
 );
 
-    localparam S_IDLE       = 4'd0;
-    localparam S_LOAD_TRNG  = 4'd1;
-    localparam S_LOAD_KEY   = 4'd2;
-    localparam S_LOAD_NONCE = 4'd3;
-    localparam S_AES_FEED   = 4'd4;
-    localparam S_LOAD_PT    = 4'd5;
-    localparam S_AES_WAIT   = 4'd6;
-    localparam S_AES_OUT    = 4'd7;
+    localparam S_IDLE     = 2'd0;
+    localparam S_AES_FEED = 2'd1;
+    localparam S_AES_OUT  = 2'd2;
 
-    reg [3:0] state, next_state;
+    reg [1:0] state, next_state;
     reg [3:0] count, next_count;
 
     wire [143:0] random_bits;
-    wire prng_valid;
 
-    `ifdef AES_256
-        reg [255:0] key_reg, next_key_reg;
-    `elsif AES_192
-        reg [191:0] key_reg, next_key_reg;
-    `else
-        reg [127:0] key_reg, next_key_reg;
-    `endif
+`ifdef AES_256
+    reg [255:0] key_reg, next_key_reg;
+`elsif AES_192
+    reg [191:0] key_reg, next_key_reg;
+`else
+    reg [127:0] key_reg, next_key_reg;
+`endif
 
     reg [127:0] nonce_reg, next_nonce_reg;
-    reg [255:0] pt_reg, next_pt_reg;
 
     reg aes_valid_in;
     reg [31:0] aes_key_in;
     reg [31:0] aes_data_in;
+
     wire aes_valid_out;
     wire [31:0] aes_data_out;
 
-    assign prng_valid = (state == S_LOAD_TRNG) && valid_in;
+    wire prng_valid;
+    assign prng_valid = (state == S_IDLE) && start;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= S_IDLE;
             count <= 4'd0;
+
         `ifdef AES_256
             key_reg <= 256'd0;
         `elsif AES_192
@@ -59,14 +55,13 @@ module aes_ctr_sca #(
         `else
             key_reg <= 128'd0;
         `endif
+
             nonce_reg <= 128'd0;
-            pt_reg <= 256'd0;
         end else begin
             state <= next_state;
             count <= next_count;
             key_reg <= next_key_reg;
             nonce_reg <= next_nonce_reg;
-            pt_reg <= next_pt_reg;
         end
     end
 
@@ -75,56 +70,17 @@ module aes_ctr_sca #(
         next_count = count;
         next_key_reg = key_reg;
         next_nonce_reg = nonce_reg;
-        next_pt_reg = pt_reg;
 
         case (state)
+
             S_IDLE: begin
+                next_count = 4'd0;
+
                 if (start) begin
-                    next_state = S_LOAD_TRNG;
+                    next_key_reg = key_in;
+                    next_nonce_reg = nonce_in;
+                    next_state = S_AES_FEED;
                     next_count = 4'd0;
-                end
-            end
-
-            S_LOAD_TRNG: begin
-                if (valid_in) begin
-                    if (count == 4'd4) begin
-                        next_state = S_LOAD_KEY;
-                        next_count = 4'd0;
-                    end else begin
-                        next_count = count + 4'd1;
-                    end
-                end
-            end
-
-            S_LOAD_KEY: begin
-                if (valid_in) begin
-                `ifdef AES_256
-                    next_key_reg = {key_in, key_reg[255:32]};
-                    if (count == 4'd7) begin
-                `elsif AES_192
-                    next_key_reg = {key_in, key_reg[191:32]};
-                    if (count == 4'd5) begin
-                `else
-                    next_key_reg = {key_in, key_reg[127:32]};
-                    if (count == 4'd3) begin
-                `endif
-                        next_state = S_LOAD_NONCE;
-                        next_count = 4'd0;
-                    end else begin
-                        next_count = count + 4'd1;
-                    end
-                end
-            end
-
-            S_LOAD_NONCE: begin
-                if (valid_in) begin
-                    next_nonce_reg = {nonce_in, nonce_reg[127:32]};
-                    if (count == 4'd3) begin
-                        next_state = S_AES_FEED;
-                        next_count = 4'd0;
-                    end else begin
-                        next_count = count + 4'd1;
-                    end
                 end
             end
 
@@ -136,36 +92,15 @@ module aes_ctr_sca #(
             `else
                 if (count == 4'd7) begin
             `endif
-                    next_state = S_LOAD_PT;
+                    next_state = S_AES_OUT;
                     next_count = 4'd0;
                 end else begin
                     next_count = count + 4'd1;
                 end
             end
 
-            S_LOAD_PT: begin
-                if (valid_in) begin
-                    next_pt_reg = {pt_in, pt_reg[255:32]};
-                    if (count == 4'd7) begin
-                        next_state = S_AES_WAIT;
-                        next_count = 4'd0;
-                    end else begin
-                        next_count = count + 4'd1;
-                    end
-                end
-            end
-
-            S_AES_WAIT: begin
-                if (aes_valid_out) begin
-                    next_state = S_AES_OUT;
-                    next_count = 4'd1;
-                    next_pt_reg = {32'd0, pt_reg[255:32]};
-                end
-            end
-
             S_AES_OUT: begin
-                if (aes_valid_out) begin
-                    next_pt_reg = {32'd0, pt_reg[255:32]};
+                if (aes_valid_out && valid_in) begin
                     if (count == 4'd7) begin
                         if (stop) begin
                             next_state = S_IDLE;
@@ -173,16 +108,19 @@ module aes_ctr_sca #(
                             next_state = S_AES_FEED;
                             next_nonce_reg[31:0] = nonce_reg[31:0] + 32'd2;
                         end
+
                         next_count = 4'd0;
                     end else begin
                         next_count = count + 4'd1;
                     end
                 end
             end
-            
+
             default: begin
                 next_state = S_IDLE;
+                next_count = 4'd0;
             end
+
         endcase
     end
 
@@ -190,13 +128,15 @@ module aes_ctr_sca #(
         aes_valid_in = 1'b0;
         aes_key_in = 32'd0;
         aes_data_in = 32'd0;
+
         valid_out = 1'b0;
         ct_out = 32'd0;
 
         if (state == S_AES_FEED) begin
             aes_valid_in = 1'b1;
-            
+
         `ifdef AES_256
+
             case (count)
                 4'd0: aes_key_in = key_reg[31:0];
                 4'd1: aes_key_in = key_reg[63:32];
@@ -217,7 +157,9 @@ module aes_ctr_sca #(
                 4'd3, 4'd11: aes_data_in = nonce_reg[127:96];
                 default:     aes_data_in = 32'd0;
             endcase
+
         `elsif AES_192
+
             case (count)
                 4'd0: aes_key_in = key_reg[31:0];
                 4'd1: aes_key_in = key_reg[63:32];
@@ -236,7 +178,9 @@ module aes_ctr_sca #(
                 4'd3, 4'd9: aes_data_in = nonce_reg[127:96];
                 default:    aes_data_in = 32'd0;
             endcase
+
         `else
+
             case (count)
                 4'd0, 4'd4: aes_key_in = key_reg[31:0];
                 4'd1, 4'd5: aes_key_in = key_reg[63:32];
@@ -253,16 +197,13 @@ module aes_ctr_sca #(
                 4'd3, 4'd7: aes_data_in = nonce_reg[127:96];
                 default:    aes_data_in = 32'd0;
             endcase
+
         `endif
         end
 
-        if (state == S_AES_WAIT && aes_valid_out) begin
+        if (state == S_AES_OUT && aes_valid_out && valid_in) begin
             valid_out = 1'b1;
-            ct_out = aes_data_out ^ pt_reg[31:0];
-        end
-        else if (state == S_AES_OUT && aes_valid_out) begin
-            valid_out = 1'b1;
-            ct_out = aes_data_out ^ pt_reg[31:0];
+            ct_out = aes_data_out ^ pt_in;
         end
     end
 
@@ -293,13 +234,12 @@ endmodule
 module aes_prng_sca (
     input clk,
     input rst_n,
-    input [31:0] trng_in,
+    input [159:0] trng_in,
     input trng_valid,
     output [143:0] random_out
 );
 
     reg [31:0] b1, b2, b3, b4, b5;
-    wire [31:0] next_b1, next_b2, next_b3, next_b4, next_b5;
 
     function [31:0] xs32;
         input [31:0] in_val;
@@ -311,27 +251,28 @@ module aes_prng_sca (
         end
     endfunction
 
-    assign next_b1 = trng_valid ? (xs32(b5) ^ trng_in) : xs32(b5);
-    assign next_b2 = xs32(b1);
-    assign next_b3 = xs32(b2);
-    assign next_b4 = xs32(b3);
-    assign next_b5 = xs32(b4);
-
-    always @(posedge clk, negedge rst_n) begin
+    always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             b1 <= 32'd1;
             b2 <= 32'd2;
             b3 <= 32'd3;
             b4 <= 32'd4;
             b5 <= 32'd5;
+        end else if (trng_valid) begin
+            b1 <= trng_in[31:0];
+            b2 <= trng_in[63:32];
+            b3 <= trng_in[95:64];
+            b4 <= trng_in[127:96];
+            b5 <= trng_in[159:128];
         end else begin
-            b1 <= next_b1;
-            b2 <= next_b2;
-            b3 <= next_b3;
-            b4 <= next_b4;
-            b5 <= next_b5;
+            b1 <= xs32(b5);
+            b2 <= xs32(b1);
+            b3 <= xs32(b2);
+            b4 <= xs32(b3);
+            b5 <= xs32(b4);
         end
     end
 
     assign random_out = {b5[15:0], b4, b3, b2, b1};
+
 endmodule
