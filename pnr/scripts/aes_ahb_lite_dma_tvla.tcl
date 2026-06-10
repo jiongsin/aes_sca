@@ -12,7 +12,7 @@ set DESIGN_VER $env(DESIGN_VER)
 
 file mkdir ./results/${DESIGN_VER}/tvla_${TVLA}
 
-read_verilog ${DESIGN_VER}_ntl.v
+read_verilog ${DESIGN_VER}.v
 link_design ${NTL}
 current_design ${NTL}
 
@@ -44,7 +44,7 @@ check_power
 # update_power
 
 set_power_analysis_options -waveform_format out \
-                           -waveform_interval 0.05 \
+                           -waveform_interval 0.01 \
                            -waveform_output ./results/${DESIGN_VER}/tvla_${TVLA}/tvla_traces
 update_power
 

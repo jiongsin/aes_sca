@@ -131,12 +131,14 @@ interface aes_ahb_lite_dma_if(input logic HCLK);
     logic        irq;
 
     clocking drv_cb @(posedge HCLK);
+        default input #3ns output #2ns;
         output HSEL, HADDR, HTRANS, HWRITE, HSIZE, HBURST, HPROT, HMASTLOCK, HWDATA, HREADY;
         input HRDATA, HREADYOUT, HRESP;
         input dma_pt_req, dma_ct_req, irq;
     endclocking
 
     clocking mon_cb @(posedge HCLK);
+        default input #5ns output #0;
         input HSEL, HADDR, HTRANS, HWRITE, HSIZE, HBURST, HPROT, HMASTLOCK, HWDATA, HREADY;
         input HRDATA, HREADYOUT, HRESP;
         input dma_pt_req, dma_ct_req, irq;

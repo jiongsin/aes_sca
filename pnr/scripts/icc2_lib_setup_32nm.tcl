@@ -7,7 +7,7 @@ if {![file isdirectory MYLIB ]} {
     create_lib MYLIB \
         -technology ${LIB_PATH}/tech/milkyway/saed32nm_1p9m_mw.tf \
         -ref_libs [list \
-            "${LIB_PATH}/stdcell_lvt/ndm/saed32lvt.ndm" \
+            "/home/user16/stdcell_hvt_ndm/ndm/saed32hvt.ndm" \
         ]
 }
 

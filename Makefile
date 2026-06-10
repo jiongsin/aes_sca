@@ -44,7 +44,8 @@ SYN_LOG      = $(SYN_DIR)/logs/$(DESIGN_VER).log
 SYN_RES      = $(SYN_DIR)/results/$(DESIGN_VER)
 
 PNR_DIR      = $(WORKAREA)/pnr
-PNR_TCL      = $(PNR_DIR)/scripts/$(DESIGN)_pnr.tcl
+PNR_TCL      = $(PNR_DIR)/scripts/aes_pnr.tcl
+PNR_EXPORT_TCL = $(PNR_DIR)/scripts/aes_export.tcl
 PNR_LOG      = $(PNR_DIR)/logs/$(DESIGN_VER)_pnr.log
 PNR_RES      = $(PNR_DIR)/results/$(DESIGN_VER)
 
@@ -69,7 +70,7 @@ SYN_NTL      = $(SYN_RES)/$(DESIGN_VER)_ntl.v
 PNR_PSIM_TCL = $(PNR_DIR)/scripts/$(DESIGN)_tvla.tcl
 PNR_NTL      = $(PNR_RES)/$(DESIGN_VER).v
 
-PNR_STA_TCL  = $(PNR_DIR)/scripts/$(DESIGN)_sta.tcl
+PNR_STA_TCL  = $(PNR_DIR)/scripts/aes_sta.tcl
 PNR_STA_LOG  = $(PNR_DIR)/logs/$(DESIGN_VER)_sta.log
 
 # Tools and Flags
@@ -115,12 +116,14 @@ PT_SHELL      = pt_shell
 # Targets
 .PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp pnr pnr.sim pnr.verdi pnr.psim pnr.tvla pnr.all pnr.alp sta repeat debug help
 
-all: sim syn syn.sim pnr pnr.alp sta
+all: sim syn syn.sim pnr pnr.sim sta
+all.tvla: sim syn syn.sim pnr pnr.sim sta pnr.alp
 
 libv:
 	@cp syn/scripts/dc_lib_setup_$(LIBV)nm.tcl syn/scripts/dc_lib_setup.tcl
 	@cp syn/scripts/pt_lib_setup_$(LIBV)nm.tcl syn/scripts/pt_lib_setup.tcl
 	@cp pnr/scripts/icc2_lib_setup_$(LIBV)nm.tcl pnr/scripts/icc2_lib_setup.tcl
+	@cp pnr/scripts/pt_lib_setup_$(LIBV)nm.tcl pnr/scripts/pt_lib_setup.tcl
 
 sim:
 	@echo "Starting Simulation for $(DESIGN_VER)..."
@@ -187,7 +190,7 @@ syn.tvla:
 	 export MODE=$(MODE) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
 	 cd $(SYN_DIR)/scripts && \
-	 if [ -d venv ]; then source venv/bin/activate; fi && \
+	 if [ -d venv ]; then source ../venv/bin/activate; fi && \
 	 python3 $(DESIGN)_tvla.py
 
 syn.all:
@@ -214,6 +217,16 @@ pnr:
 	 export VER=$(VER) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
 	 $(ICC2_SHELL) $(ARGS) -f $(PNR_TCL) | tee -i $(PNR_LOG)
+
+pnr.export:
+	@echo "Starting Place and Route for $(DESIGN_VER)..."
+	@mkdir -p $(PNR_DIR)/logs
+	@cd $(PNR_DIR) && \
+	 export DESIGN=$(DESIGN) && \
+	 export MODE=$(MODE) && \
+	 export VER=$(VER) && \
+	 export DESIGN_VER=$(DESIGN_VER) && \
+	 $(ICC2_SHELL) $(ARGS) -f $(PNR_EXPORT_TCL) | tee -i $(PNR_LOG)
 
 pnr.sim:
 	@echo "Starting Post-Layout Simulation for $(DESIGN_VER)..."
@@ -248,7 +261,7 @@ pnr.tvla:
 	 export MODE=$(MODE) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
 	 cd $(PNR_DIR)/scripts && \
-	 if [ -d venv ]; then source venv/bin/activate; fi && \
+	 if [ -d venv ]; then source ../venv/bin/activate; fi && \
 	 python3 $(DESIGN)_tvla.py
 
 pnr.all:

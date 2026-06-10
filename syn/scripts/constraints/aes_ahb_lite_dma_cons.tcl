@@ -8,7 +8,7 @@ echo "----------------------------------------------------------------"
 set CLK_PORT_NAME "HCLK"
 set CLK_PERIOD 10.0
 set period [string map {. p} $CLK_PERIOD]
-set DELAY [expr $CLK_PERIOD * 0.10]
+set DELAY [expr $CLK_PERIOD * 0.40]
 
 # CLOCK DEFINITION
 create_clock -name clk -period $CLK_PERIOD [get_ports $CLK_PORT_NAME]

@@ -1,6 +1,6 @@
 ############################################################
 # ICC2 Routing + Post-Route Optimization Script
-# DOM-based AES-CTR AHB-Lite DMA SCA Accelerator
+# DOM-based Masked AES Accelerator
 #
 # Input block:
 #   ${ntl_ver}_after_cts
@@ -47,21 +47,11 @@ set USE_POST_ROUTE_POWER_OPT 0
 
 # Optional antenna rule file.
 set USE_ANTENNA_RULES 1
-set ANTENNA_RULE_FILE ../libs/tech/milkyway/saed32nm_ant_1p9m.tcl
+set ANTENNA_RULE_FILE /data/synopsys/lib/saed32nm/lib/tech/milkyway/saed32nm_ant_1p9m.tcl
 
 # Final filler insertion after routing optimization.
 set INSERT_FILLERS_AFTER_ROUTE 1
 set FILLER_CELLS {saed32hvt/SHFILL*}
-
-
-############################################################
-# AHB-Lite DMA wrapper notes
-############################################################
-# Starts from the wrapper CTS block:
-#   ${ntl_ver}_after_cts
-# Produces the routed wrapper block:
-#   ${ntl_ver}_after_route
-############################################################
 
 ############################################################
 # 1. Directory setup
@@ -340,7 +330,7 @@ redirect -file ${REPORT_DIR}/51_route_setup_options.rpt {
 }
 
 ############################################################
-# 7. DOM/SCA + AHB-DMA pre-route structure report
+# 7. DOM/SCA pre-route structure report
 ############################################################
 
 if {$USE_DOM_SECURITY_RULES} {
@@ -368,7 +358,7 @@ if {$USE_DOM_SECURITY_RULES} {
     set sbox_buffer_regs  [get_cells -hierarchical -quiet *sbox_buffer*]
 
     redirect -file ${REPORT_DIR}/52_dom_security_pre_route.rpt {
-        puts "===== DOM/SCA + AHB-DMA pre-route structure report ====="
+        puts "===== DOM/SCA pre-route structure report ====="
         puts "sbox_cells             : [sizeof_collection $sbox_cells]"
         puts "sbox_gen_cells         : [sizeof_collection $sbox_gen_cells]"
         puts "inv_cells              : [sizeof_collection $inv_cells]"

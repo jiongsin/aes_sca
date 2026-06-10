@@ -1,6 +1,7 @@
+
 ############################################################
 # ICC2 PrimeTime Handoff Export Only Script
-# DOM-based AES-CTR AHB-Lite DMA SCA Accelerator
+# DOM-based Masked AES Accelerator
 #
 # Purpose:
 #   Run in icc2_shell.
@@ -22,7 +23,7 @@ set ntl_ver $env(DESIGN_VER)
 if {[info exists env(INPUT_BLOCK)]} {
     set INPUT_BLOCK $env(INPUT_BLOCK)
 } else {
-    set INPUT_BLOCK ${ntl_ver}_after_route
+    set INPUT_BLOCK ${ntl_ver}_after_route_clean
 }
 
 set SETUP_SCENARIO func.slow_max
@@ -37,14 +38,11 @@ set WRITE_FLOORPLAN 1
 
 set COMPRESS_SPEF 0
 
-
-############################################################
-# AHB-Lite DMA wrapper notes
-############################################################
-# Exports the final wrapper implementation for PrimeTime handoff.
-# Default input block:
-#   ${ntl_ver}_after_route
-############################################################
+# Power report corners.
+# Leave this empty to report power for both SETUP_SCENARIO and HOLD_SCENARIO,
+# with leakage/dynamic power enabled on both scenarios.
+# Example override: set POWER_REPORT_SCENARIOS [list func.slow_max]
+set POWER_REPORT_SCENARIOS {}
 
 ############################################################
 # 1. Directory setup
@@ -153,9 +151,11 @@ safe_redirect ${REPORT_DIR}/01_icc2_export_design_summary.rpt {
 ############################################################
 
 set export_scenarios {}
+set power_report_scenarios {}
 
 if {[scenario_exists $SETUP_SCENARIO]} {
     lappend export_scenarios $SETUP_SCENARIO
+    lappend power_report_scenarios $SETUP_SCENARIO
 
     must_run "Setting setup scenario status for $SETUP_SCENARIO" {
         set_scenario_status $SETUP_SCENARIO \
@@ -171,14 +171,15 @@ if {[scenario_exists $SETUP_SCENARIO]} {
 
 if {[scenario_exists $HOLD_SCENARIO]} {
     lappend export_scenarios $HOLD_SCENARIO
+    lappend power_report_scenarios $HOLD_SCENARIO
 
     must_run "Setting hold scenario status for $HOLD_SCENARIO" {
         set_scenario_status $HOLD_SCENARIO \
             -active true \
             -setup false \
             -hold true \
-            -leakage_power false \
-            -dynamic_power false
+            -leakage_power true \
+            -dynamic_power true
     }
 } else {
     puts "WARNING: Hold scenario $HOLD_SCENARIO not found."
@@ -197,10 +198,62 @@ if {[llength $export_scenarios] == 0} {
     error "No scenarios available for export."
 }
 
+# Resolve power-report scenarios.
+# By default, power reports are generated for both setup/SS and hold/FF scenarios.
+# Both scenarios have leakage_power and dynamic_power enabled above to avoid POW-009.
+if {[llength $POWER_REPORT_SCENARIOS] > 0} {
+    set power_report_scenarios {}
+    foreach scen $POWER_REPORT_SCENARIOS {
+        if {[scenario_exists $scen]} {
+            lappend power_report_scenarios $scen
+        } else {
+            puts "WARNING: Requested power report scenario $scen not found; skipping."
+        }
+    }
+}
+
+if {[llength $power_report_scenarios] == 0} {
+    puts "WARNING: No power report scenarios found."
+    puts "WARNING: Power report will be skipped unless POWER_REPORT_SCENARIOS is set."
+}
+
 safe_redirect ${REPORT_DIR}/02_icc2_export_scenarios.rpt {
     puts "PrimeTime handoff export scenarios: $export_scenarios"
     puts ""
     report_scenarios
+}
+
+
+############################################################
+# 4a. Power analysis setup check
+############################################################
+
+safe_redirect ${REPORT_DIR}/02a_icc2_power_analysis_setup.rpt {
+    puts "===== power analysis setup ====="
+
+    if {[catch {report_power_analysis_options} pwr_opt_msg]} {
+        puts "WARNING: report_power_analysis_options failed"
+        puts $pwr_opt_msg
+    }
+
+    puts ""
+    puts "===== power report scenarios ====="
+    puts "Power reports will be generated for: $power_report_scenarios"
+    puts "All export scenarios are: $export_scenarios"
+
+    foreach scen $export_scenarios {
+        current_scenario $scen
+
+        puts ""
+        puts "============================================================"
+        puts "Scenario: $scen"
+        puts "============================================================"
+
+        if {[catch {report_scenario_status $scen} scen_status_msg]} {
+            puts "WARNING: report_scenario_status failed for $scen"
+            puts $scen_status_msg
+        }
+    }
 }
 
 ############################################################
@@ -272,6 +325,52 @@ safe_redirect ${REPORT_DIR}/04_icc2_pre_export_timing_drv.rpt {
             puts "WARNING: report_constraints DRV failed for $scen"
             puts $drv_msg
         }
+    }
+}
+
+
+safe_redirect ${REPORT_DIR}/04a_icc2_pre_export_power.rpt {
+    puts "===== ICC2 power report ====="
+    puts "Power report scenarios: $power_report_scenarios"
+    puts "All export scenarios   : $export_scenarios"
+    puts ""
+    puts "Note: power is enabled for both setup/SS and hold/FF scenarios."
+    puts "      This allows report_power on both corners without POW-009."
+
+    foreach scen $power_report_scenarios {
+        current_scenario $scen
+
+        puts ""
+        puts "============================================================"
+        puts "Scenario: $scen"
+        puts "============================================================"
+
+        puts ""
+        puts "===== report_power ====="
+        if {[catch {report_power} pwr_msg]} {
+            puts "WARNING: report_power failed for $scen"
+            puts $pwr_msg
+        }
+
+        puts ""
+        puts "===== report_power -hierarchy ====="
+        if {[catch {report_power -hierarchy} pwr_hier_msg]} {
+            puts "WARNING: report_power -hierarchy failed for $scen"
+            puts $pwr_hier_msg
+        }
+    }
+
+    puts ""
+    puts "===== skipped export scenarios for power ====="
+    set skipped_power_count 0
+    foreach scen $export_scenarios {
+        if {[lsearch -exact $power_report_scenarios $scen] < 0} {
+            puts "Skipped $scen for power reporting."
+            incr skipped_power_count
+        }
+    }
+    if {$skipped_power_count == 0} {
+        puts "None."
     }
 }
 
@@ -604,6 +703,7 @@ safe_redirect ${REPORT_DIR}/05_icc2_export_summary.rpt {
         }
     }
 
+    puts "  Power rpt  : ${REPORT_DIR}/04a_icc2_pre_export_power.rpt"
     puts "  ICC2 block : ${ntl_ver}_export"
 
     puts ""
@@ -623,4 +723,4 @@ puts "============================================================"
 # End of ICC2 PrimeTime handoff export only script
 ############################################################
 
-exit
+# exit

@@ -491,11 +491,11 @@ package aes_ahb_lite_dma_pkg;
                 burst_idx     = (tx_word_idx + i) / 8;
                 word_in_burst = (tx_word_idx + i) % 8;
 
-                $display("[%0t] [DMA_STREAM_WR_PT_PIPE] burst[%0d] word[%0d] = %08h",
-                         $time,
-                         burst_idx,
-                         word_in_burst,
-                         tr_q[burst_idx].plain_text[(word_in_burst*32) +: 32]);
+            //    $display("[%0t] [DMA_STREAM_WR_PT_PIPE] burst[%0d] word[%0d] = %08h",
+            //             $time,
+            //             burst_idx,
+            //             word_in_burst,
+            //             tr_q[burst_idx].plain_text[(word_in_burst*32) +: 32]);
             end
 
             tx_word_idx += chunk_words;
@@ -555,11 +555,11 @@ package aes_ahb_lite_dma_pkg;
 
                 tr_q[burst_idx].cipher_text[(word_in_burst*32) +: 32] = rd_q[i];
 
-                $display("[%0t] [DMA_STREAM_RD_CT_PIPE] burst[%0d] word[%0d] = %08h",
-                         $time,
-                         burst_idx,
-                         word_in_burst,
-                         rd_q[i]);
+                //$display("[%0t] [DMA_STREAM_RD_CT_PIPE] burst[%0d] word[%0d] = %08h",
+                //         $time,
+                //         burst_idx,
+                //         word_in_burst,
+                //         rd_q[i]);
 
                 if (word_in_burst == 7) begin
                     drv2scb.put(tr_q[burst_idx]);
