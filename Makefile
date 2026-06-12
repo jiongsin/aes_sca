@@ -114,10 +114,10 @@ VCS_PNR_FLAGS = -full64 -sverilog -debug_acc+all -kdb -R \
 PT_SHELL      = pt_shell
 
 # Targets
-.PHONY: all libv sim verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp pnr pnr.sim pnr.verdi pnr.psim pnr.tvla pnr.all pnr.alp sta repeat debug help
+.PHONY: all libv sim saif verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp pnr pnr.sim pnr.verdi pnr.psim pnr.tvla pnr.all pnr.alp sta repeat debug help
 
-all: sim syn syn.sim pnr pnr.sim sta
-all.tvla: sim syn syn.sim pnr pnr.sim sta pnr.alp
+all: sim saif syn saif syn.sim pnr pnr.sim sta
+all.tvla: sim saif syn syn.sim pnr pnr.sim sta pnr.alp
 
 libv:
 	@cp syn/scripts/dc_lib_setup_$(LIBV)nm.tcl syn/scripts/dc_lib_setup.tcl
@@ -136,6 +136,9 @@ sim:
 	 -f $(WORKAREA)/verif/tb/filelist.f \
 	 -top $(DESIGN)_tb \
 	 +define+$(DESIGN_CAP) +define+AES_$(MODE) +define+AES_$(VER_CAP) +COUNT=$(TEST_CNT)
+
+saif:
+	@echo "Starting fsdb2saif for $(DESIGN_VER)..."
 	@cd $(SIMV_DIR) && \
 	fsdb2saif $(DESIGN_VER).fsdb -o $(DESIGN_VER).saif
 
@@ -152,7 +155,7 @@ syn:
 	 export period=$(PERIOD) && \
 	 export version=$(VER) && \
 	 $(DC_SHELL) $(DC_FLAGS) -f $(SYN_TCL) | tee -i $(SYN_LOG)
-	@cd $(SYN_DIR)/scripts && ppa_report.py
+	@cd $(SYN_DIR)/scripts && python3 ppa_report.py
 
 syn.sim:
 	@echo "Starting Pre-Layout Simulation for $(DESIGN_VER)..."

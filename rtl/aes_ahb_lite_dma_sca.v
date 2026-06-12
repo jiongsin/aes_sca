@@ -26,7 +26,7 @@ module aes_ahb_lite_dma_sca #(
     output            irq
 );
 
-    localparam FIFO_AW = $clog2(FIFO_DEPTH);
+    localparam FIFO_AW  = $clog2(FIFO_DEPTH);
     localparam KEY_WORDS = MODE / 32;
 
     // ------------------------------------------------------------
@@ -77,16 +77,28 @@ module aes_ahb_lite_dma_sca #(
     localparam ST_ILLEGAL_ACCESS   = 13;
 
     // ------------------------------------------------------------
-    // AHB-Lite response generation
+    // AHB-Lite response FSM
+    //
+    // Strict protocol behavior:
+    //   * writes complete with zero wait states
+    //   * legal reads use a registered HRDATA path and therefore insert
+    //     one wait state before completing with OKAY
+    //   * illegal transfers return the required two-cycle ERROR response:
+    //       cycle 1: HRESP=1, HREADYOUT=0
+    //       cycle 2: HRESP=1, HREADYOUT=1
     // ------------------------------------------------------------
-    localparam [1:0] ERR_NONE   = 2'd0;
-    localparam [1:0] ERR_FIRST  = 2'd1;
-    localparam [1:0] ERR_SECOND = 2'd2;
+    localparam [1:0] RESP_OKAY      = 2'd0;
+    localparam [1:0] RESP_READ_WAIT = 2'd1;
+    localparam [1:0] RESP_ERR_FIRST = 2'd2;
+    localparam [1:0] RESP_ERR_SECOND= 2'd3;
 
-    reg [1:0] err_state;
+    reg [1:0] resp_state;
 
-    assign HREADYOUT = (err_state != ERR_FIRST);
-    assign HRESP     = (err_state != ERR_NONE);
+    assign HREADYOUT = (resp_state != RESP_READ_WAIT) &&
+                       (resp_state != RESP_ERR_FIRST);
+
+    assign HRESP     = (resp_state == RESP_ERR_FIRST) ||
+                       (resp_state == RESP_ERR_SECOND);
 
     wire hready_accept = HREADY & HREADYOUT;
     wire ahb_addr_phase = HSEL & hready_accept & HTRANS[1];
@@ -146,12 +158,15 @@ module aes_ahb_lite_dma_sca #(
         addr_word_aligned &&
         direction_legal;
 
+    wire read_addr_accept    = ahb_addr_phase & ~HWRITE &  ahb_addr_legal;
+    wire illegal_addr_accept = ahb_addr_phase &             ~ahb_addr_legal;
+
     // ------------------------------------------------------------
     // AHB-Lite address/control phase capture
     //
-    // Correct AHB-Lite write pairing:
+    // Used for write data-phase pairing:
     //   ahb_addr_d / ahb_write_d = previous accepted address/control phase
-    //   ahb_wdata_phase          = current HWDATA data phase
+    //   HWDATA                   = current data phase
     // ------------------------------------------------------------
     reg       ahb_write_d;
     reg       ahb_valid_d;
@@ -176,41 +191,10 @@ module aes_ahb_lite_dma_sca #(
         end
     end
 
-    wire ahb_wr = ahb_valid_d &  ahb_write_d & ahb_legal_d & (err_state == ERR_NONE);
-    wire ahb_rd = ahb_valid_d & ~ahb_write_d & ahb_legal_d & (err_state == ERR_NONE);
+    wire ahb_wr = ahb_valid_d & ahb_write_d & ahb_legal_d &
+                  (resp_state == RESP_OKAY);
 
     wire [31:0] ahb_wdata_phase = HWDATA;
-
-    // ------------------------------------------------------------
-    // ERROR response FSM
-    // ------------------------------------------------------------
-    wire illegal_data_phase = ahb_valid_d & ~ahb_legal_d & (err_state == ERR_NONE);
-
-    always @(posedge HCLK or negedge HRESETn) begin
-        if (!HRESETn) begin
-            err_state <= ERR_NONE;
-        end else begin
-            case (err_state)
-                ERR_NONE: begin
-                    if (illegal_data_phase) begin
-                        err_state <= ERR_FIRST;
-                    end
-                end
-
-                ERR_FIRST: begin
-                    err_state <= ERR_SECOND;
-                end
-
-                ERR_SECOND: begin
-                    err_state <= ERR_NONE;
-                end
-
-                default: begin
-                    err_state <= ERR_NONE;
-                end
-            endcase
-        end
-    end
 
     // ------------------------------------------------------------
     // Configuration registers
@@ -240,7 +224,8 @@ module aes_ahb_lite_dma_sca #(
         end
     endgenerate
 
-    wire [2:0] key_word_idx = (ahb_addr_d - A_KEY0) >> 2;
+    wire [2:0] key_word_idx      = (ahb_addr_d - A_KEY0) >> 2;
+    wire [2:0] key_word_idx_addr = (addr8      - A_KEY0) >> 2;
 
     wire is_key_addr_d =
         (ahb_addr_d == A_KEY0) || (ahb_addr_d == A_KEY1) ||
@@ -288,6 +273,7 @@ module aes_ahb_lite_dma_sca #(
 
     wire [FIFO_AW:0] pt_level;
     wire [FIFO_AW:0] ct_level;
+    wire [FIFO_AW:0] pt_free = FIFO_DEPTH_COUNT - pt_level;
     wire [FIFO_AW:0] ct_free = FIFO_DEPTH_COUNT - ct_level;
 
     wire fifo_clear_write = ahb_wr & (ahb_addr_d == A_CTRL) & ahb_wdata_phase[8];
@@ -296,12 +282,17 @@ module aes_ahb_lite_dma_sca #(
     wire pt_wr_from_ahb   = ahb_wr & (ahb_addr_d == A_PTDATA) & ~pt_full;
     wire pt_wr_overflow   = ahb_wr & (ahb_addr_d == A_PTDATA) &  pt_full;
 
-    wire ct_rd_from_ahb   = ahb_rd & (ahb_addr_d == A_CTDATA) & ~ct_empty;
-    wire ct_rd_underflow  = ahb_rd & (ahb_addr_d == A_CTDATA) &  ct_empty;
+    // CTDATA read data is copied into HRDATA on address acceptance, and the
+    // FIFO can then advance immediately. The AHB read itself still completes
+    // later, after RESP_READ_WAIT.
+    wire ct_rd_from_ahb   = read_addr_accept & (addr8 == A_CTDATA) & ~ct_empty;
+    wire ct_rd_underflow  = read_addr_accept & (addr8 == A_CTDATA) &  ct_empty;
 
     wire core_valid_out;
     wire [31:0] core_ct_out;
 
+    // Keep this tied to core_valid_out. In this design the PT FIFO word is
+    // consumed when the CTR core produces the corresponding ciphertext word.
     wire pt_rd_to_core    = core_valid_out;
     wire ct_wr_from_core  = core_valid_out & ~ct_full;
 
@@ -337,8 +328,10 @@ module aes_ahb_lite_dma_sca #(
         .level (ct_level)
     );
 
-    assign dma_pt_req = ~pt_full;
-    assign dma_ct_req = ~ct_empty;
+    // These DMA request signals now match the stream-driver contract:
+    // one assertion means one complete 8-word burst is safe.
+    assign dma_pt_req = (pt_free  >= BURST_WORDS);
+    assign dma_ct_req = (ct_level >= BURST_WORDS);
 
     // ------------------------------------------------------------
     // Job/core control
@@ -416,6 +409,113 @@ module aes_ahb_lite_dma_sca #(
                   sticky_status[ST_ILLEGAL_ACCESS]);
 
     // ------------------------------------------------------------
+    // Read data source words
+    // ------------------------------------------------------------
+    wire [31:0] ctrl_word = {
+        23'd0,
+        1'b0,
+        3'd0,
+        ctrl_irq_en,
+        ctrl_dec_mode,
+        ctrl_auto_start,
+        ctrl_enable,
+        1'b0
+    };
+
+    wire [31:0] status_word = {
+        18'd0,
+        sticky_status[ST_ILLEGAL_ACCESS],
+        sticky_status[ST_COUNTER_OVERFLOW],
+        sticky_status[ST_BURST_ZERO],
+        job_active,
+        ctrl_dec_mode,
+        sticky_status[ST_CT_UNDERFLOW],
+        sticky_status[ST_PT_OVERFLOW],
+        irq,
+        ct_full,
+        ct_empty,
+        pt_full,
+        pt_empty,
+        sticky_status[ST_DONE],
+        core_active
+    };
+
+    // ------------------------------------------------------------
+    // Registered read data and response timing
+    // ------------------------------------------------------------
+    always @(posedge HCLK or negedge HRESETn) begin
+        if (!HRESETn) begin
+            resp_state <= RESP_OKAY;
+            HRDATA     <= 32'd0;
+        end else begin
+            case (resp_state)
+                RESP_OKAY: begin
+                    if (illegal_addr_accept) begin
+                        HRDATA     <= 32'd0;
+                        resp_state <= RESP_ERR_FIRST;
+                    end else if (read_addr_accept) begin
+                        if (is_key_addr) begin
+                            if (key_word_idx_addr < KEY_WORDS) begin
+                                HRDATA <= key_word[key_word_idx_addr];
+                            end else begin
+                                HRDATA <= 32'd0;
+                            end
+                        end else begin
+                            case (addr8)
+                                A_CTRL:        HRDATA <= ctrl_word;
+                                A_STATUS:      HRDATA <= status_word;
+                                A_CTDATA:      HRDATA <= ct_empty ? 32'd0 : ct_dout;
+                                A_PT_LEVEL:    HRDATA <= {{(32-(FIFO_AW+1)){1'b0}}, pt_level};
+                                A_CT_LEVEL:    HRDATA <= {{(32-(FIFO_AW+1)){1'b0}}, ct_level};
+
+                                A_NONCE0:      HRDATA <= nonce_reg[31:0];
+                                A_NONCE1:      HRDATA <= nonce_reg[63:32];
+                                A_NONCE2:      HRDATA <= nonce_reg[95:64];
+                                A_NONCE3:      HRDATA <= nonce_reg[127:96];
+
+                                A_TRNG0:       HRDATA <= trng_reg[31:0];
+                                A_TRNG1:       HRDATA <= trng_reg[63:32];
+                                A_TRNG2:       HRDATA <= trng_reg[95:64];
+                                A_TRNG3:       HRDATA <= trng_reg[127:96];
+                                A_TRNG4:       HRDATA <= trng_reg[159:128];
+
+                                A_IRQ_STATUS:  HRDATA <= status_word;
+                                A_BURST_COUNT: HRDATA <= {{(32-BURST_CNT_W){1'b0}}, burst_count_reg};
+                                A_BURST_DONE:  HRDATA <= {{(32-BURST_CNT_W){1'b0}}, burst_done_count};
+
+                                default:       HRDATA <= 32'd0;
+                            endcase
+                        end
+
+                        resp_state <= RESP_READ_WAIT;
+                    end
+                end
+
+                RESP_READ_WAIT: begin
+                    // HRDATA is already registered and stable. Return to OKAY;
+                    // HREADYOUT becomes HIGH for the final read data cycle.
+                    resp_state <= RESP_OKAY;
+                end
+
+                RESP_ERR_FIRST: begin
+                    HRDATA     <= 32'd0;
+                    resp_state <= RESP_ERR_SECOND;
+                end
+
+                RESP_ERR_SECOND: begin
+                    HRDATA     <= 32'd0;
+                    resp_state <= RESP_OKAY;
+                end
+
+                default: begin
+                    HRDATA     <= 32'd0;
+                    resp_state <= RESP_OKAY;
+                end
+            endcase
+        end
+    end
+
+    // ------------------------------------------------------------
     // Main register/control update
     // ------------------------------------------------------------
     integer rst_i;
@@ -458,7 +558,7 @@ module aes_ahb_lite_dma_sca #(
                 sticky_status[ST_COUNTER_OVERFLOW] <= 1'b1;
             end
 
-            if (illegal_data_phase) begin
+            if (illegal_addr_accept) begin
                 sticky_status[ST_ILLEGAL_ACCESS] <= 1'b1;
             end
 
@@ -559,81 +659,6 @@ module aes_ahb_lite_dma_sca #(
                     end
                 end else begin
                     out_word_count <= out_word_count + 3'd1;
-                end
-            end
-        end
-    end
-
-    // ------------------------------------------------------------
-    // Read data
-    // ------------------------------------------------------------
-    wire [31:0] ctrl_word = {
-        23'd0,
-        1'b0,
-        3'd0,
-        ctrl_irq_en,
-        ctrl_dec_mode,
-        ctrl_auto_start,
-        ctrl_enable,
-        1'b0
-    };
-
-    wire [31:0] status_word = {
-        18'd0,
-        sticky_status[ST_ILLEGAL_ACCESS],
-        sticky_status[ST_COUNTER_OVERFLOW],
-        sticky_status[ST_BURST_ZERO],
-        job_active,
-        ctrl_dec_mode,
-        sticky_status[ST_CT_UNDERFLOW],
-        sticky_status[ST_PT_OVERFLOW],
-        irq,
-        ct_full,
-        ct_empty,
-        pt_full,
-        pt_empty,
-        sticky_status[ST_DONE],
-        core_active
-    };
-
-    always @(posedge HCLK or negedge HRESETn) begin
-        if (!HRESETn) begin
-            HRDATA <= 32'd0;
-        end else begin
-            if (err_state != ERR_NONE) begin
-                HRDATA <= 32'd0;
-            end else if (ahb_rd) begin
-                if (is_key_addr_d) begin
-                    if (key_word_idx < KEY_WORDS) begin
-                        HRDATA <= key_word[key_word_idx];
-                    end else begin
-                        HRDATA <= 32'd0;
-                    end
-                end else begin
-                    case (ahb_addr_d)
-                        A_CTRL:        HRDATA <= ctrl_word;
-                        A_STATUS:      HRDATA <= status_word;
-                        A_CTDATA:      HRDATA <= ct_empty ? 32'd0 : ct_dout;
-                        A_PT_LEVEL:    HRDATA <= {{(32-(FIFO_AW+1)){1'b0}}, pt_level};
-                        A_CT_LEVEL:    HRDATA <= {{(32-(FIFO_AW+1)){1'b0}}, ct_level};
-
-                        A_NONCE0:      HRDATA <= nonce_reg[31:0];
-                        A_NONCE1:      HRDATA <= nonce_reg[63:32];
-                        A_NONCE2:      HRDATA <= nonce_reg[95:64];
-                        A_NONCE3:      HRDATA <= nonce_reg[127:96];
-
-                        A_TRNG0:       HRDATA <= trng_reg[31:0];
-                        A_TRNG1:       HRDATA <= trng_reg[63:32];
-                        A_TRNG2:       HRDATA <= trng_reg[95:64];
-                        A_TRNG3:       HRDATA <= trng_reg[127:96];
-                        A_TRNG4:       HRDATA <= trng_reg[159:128];
-
-                        A_IRQ_STATUS:  HRDATA <= status_word;
-                        A_BURST_COUNT: HRDATA <= {{(32-BURST_CNT_W){1'b0}}, burst_count_reg};
-                        A_BURST_DONE:  HRDATA <= {{(32-BURST_CNT_W){1'b0}}, burst_done_count};
-
-                        default:       HRDATA <= 32'd0;
-                    endcase
                 end
             end
         end

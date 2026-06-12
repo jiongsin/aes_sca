@@ -21,7 +21,7 @@ create_clock -name clk -period 10.0 [get_ports clk]
 set_propagated_clock [all_clocks]
 
 # Read the SDF file
-read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}.sdf
+read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}_func_slow_max.sdf
 
 # Annotate Activity from VCS Simulation Using time-based mode for FSDB
 set_app_var power_analysis_mode time_based
@@ -44,7 +44,7 @@ check_power
 # update_power
 
 set_power_analysis_options -waveform_format out \
-                           -waveform_interval 0.01 \
+                           -waveform_interval 0.05 \
                            -waveform_output ./results/${DESIGN_VER}/tvla_${TVLA}/tvla_traces
 update_power
 

@@ -33,10 +33,23 @@ module aes_ahb_lite_dma_tb;
 
     assign intf.HRESETn = HRESETn;
 
+    // Strict single-slave AHB-Lite interconnect model:
+    // HREADY is not a master-driven signal.  In a direct one-slave bench,
+    // global HREADY is the selected slave response HREADYOUT.  During reset,
+    // keep it HIGH as required by AHB-Lite reset behavior.
+    assign intf.HREADY = (HRESETn === 1'b0) ? 1'b1 : intf.HREADYOUT;
+
+    // Two-level token-paste macros allow `VER/`MODE/`FIFO_DEPTH/`BURST_CNT_W
+    // to expand before being pasted into module names.
+    `define AES_DMA_CAT2_I(a,b) a``b
+    `define AES_DMA_CAT2(a,b)   `AES_DMA_CAT2_I(a,b)
+    `define AES_DMA_CAT8_I(a,b,c,d,e,f,g,h) a``b``c``d``e``f``g``h
+    `define AES_DMA_CAT8(a,b,c,d,e,f,g,h)   `AES_DMA_CAT8_I(a,b,c,d,e,f,g,h)
+
 `ifdef GLS_SIM
-    `define DUT_TARGET aes_ahb_lite_dma_```VER``_MODE```MODE``_FIFO_DEPTH```FIFO_DEPTH``_BURST_CNT_W```BURST_CNT_W
+    `define DUT_TARGET `AES_DMA_CAT8(aes_ahb_lite_dma_, `VER, _MODE, `MODE, _FIFO_DEPTH, `FIFO_DEPTH, _BURST_CNT_W, `BURST_CNT_W)
 `else
-    `define DUT_TARGET aes_ahb_lite_dma_```VER``#(```MODE, 8, 32)
+    `define DUT_TARGET `AES_DMA_CAT2(aes_ahb_lite_dma_, `VER) #(`MODE, `FIFO_DEPTH, `BURST_CNT_W)
 `endif
 
     `DUT_TARGET dut (
@@ -62,6 +75,61 @@ module aes_ahb_lite_dma_tb;
         .dma_ct_req (intf.dma_ct_req),
         .irq        (intf.irq)
     );
+
+    // Basic AHB-Lite master hold checker.  When HREADY is LOW, the current
+    // address/control phase is waited and must remain stable until HREADY HIGH.
+    bit        hold_active;
+    bit        hold_HSEL;
+    bit [31:0] hold_HADDR;
+    bit [1:0]  hold_HTRANS;
+    bit        hold_HWRITE;
+    bit [2:0]  hold_HSIZE;
+    bit [2:0]  hold_HBURST;
+    bit [3:0]  hold_HPROT;
+    bit        hold_HMASTLOCK;
+
+    always @(posedge HCLK or negedge HRESETn) begin
+        if (!HRESETn) begin
+            hold_active <= 1'b0;
+        end else begin
+            if (intf.HREADY !== 1'b1) begin
+                if (!hold_active) begin
+                    hold_active    <= 1'b1;
+                    hold_HSEL      <= intf.HSEL;
+                    hold_HADDR     <= intf.HADDR;
+                    hold_HTRANS    <= intf.HTRANS;
+                    hold_HWRITE    <= intf.HWRITE;
+                    hold_HSIZE     <= intf.HSIZE;
+                    hold_HBURST    <= intf.HBURST;
+                    hold_HPROT     <= intf.HPROT;
+                    hold_HMASTLOCK <= intf.HMASTLOCK;
+                end else begin
+                    if ({intf.HSEL,
+                         intf.HADDR,
+                         intf.HTRANS,
+                         intf.HWRITE,
+                         intf.HSIZE,
+                         intf.HBURST,
+                         intf.HPROT,
+                         intf.HMASTLOCK} !==
+                        {hold_HSEL,
+                         hold_HADDR,
+                         hold_HTRANS,
+                         hold_HWRITE,
+                         hold_HSIZE,
+                         hold_HBURST,
+                         hold_HPROT,
+                         hold_HMASTLOCK}) begin
+                        $fatal(1,
+                               "[%0t] AHB-Lite hold violation: address/control changed while HREADY LOW",
+                               $time);
+                    end
+                end
+            end else begin
+                hold_active <= 1'b0;
+            end
+        end
+    end
 
 `ifdef AES_DMA_INTERNAL_DBG
     initial begin
@@ -103,7 +171,7 @@ module aes_ahb_lite_dma_tb;
 
         expected_scoreboard_count = test_count;
 
-        $display("[%0t] [DMA_TB_VERSION] continuous-stream AHB-Lite DMA TB", $time);
+        $display("[%0t] [DMA_TB_VERSION] strict AHB-Lite DMA TB, ERROR-smoke + registered-HRDATA/read-wait compatible", $time);
         $display("[%0t] [TOP] Starting AES AHB-Lite DMA SCA simulation", $time);
         $display("[%0t] [TOP] MODE = %0d", $time, MODE);
         $display("[%0t] [TOP] Continuous DMA bursts = %0d", $time, test_count);
@@ -121,7 +189,6 @@ module aes_ahb_lite_dma_tb;
         intf.HPROT     = HPROT_DATA;
         intf.HMASTLOCK = 1'b0;
         intf.HWDATA    = 32'd0;
-        intf.HREADY    = 1'b1;
 
         HRESETn = 1'b0;
         repeat (5) @(negedge HCLK);
@@ -132,6 +199,10 @@ module aes_ahb_lite_dma_tb;
             mon.run();
             scb.run();
         join_none
+
+        // Run one protocol-negative test before the correct DMA scenario.
+        // This checks the two-cycle AHB-Lite ERROR response for an illegal read.
+        drv.run_error_response_smoke();
 
         for (int i = 0; i < test_count; i++) begin
             aes_ahb_lite_dma_transaction#(MODE) tr;

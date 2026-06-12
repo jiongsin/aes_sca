@@ -1,4 +1,12 @@
+
+
 package aes_ahb_lite_dma_pkg;
+
+    // Revised for strict AHB-Lite testbench connection:
+    // * the driver does not drive HREADY; the top-level testbench loops
+    //   global HREADY from the slave response path for this single-slave bench.
+    // * read tasks wait for HREADYOUT and sample HRDATA only on completed
+    //   OKAY data phases, supporting registered-HRDATA slaves with wait states.
 
     import "DPI-C" function void aes_ctr_ref_model(
         input  int         mode,
@@ -128,7 +136,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HPROT     = HPROT_DATA;
             vif.HMASTLOCK = 1'b0;
             vif.HWDATA    = 32'd0;
-            vif.HREADY    = 1'b1;
         endtask
 
 
@@ -136,6 +143,29 @@ package aes_ahb_lite_dma_pkg;
             do begin
                 @(posedge vif.HCLK);
             end while (vif.HREADYOUT !== 1'b1);
+        endtask
+
+
+        // Use this for read data sampling.  The interface clocking block must
+        // sample HRDATA/HREADYOUT with input skew.  This supports both
+        // zero-wait and waited reads; a registered-HRDATA slave may hold
+        // HREADYOUT LOW until HRDATA is stable.
+        task automatic wait_ready_cb();
+            do begin
+                @(vif.mon_cb);
+            end while (vif.mon_cb.HREADYOUT !== 1'b1);
+        endtask
+
+
+        task automatic wait_ready_okay_cb(input string phase_name = "AHB transfer");
+            wait_ready_cb();
+
+            if (vif.mon_cb.HRESP !== 1'b0) begin
+                $fatal(1,
+                       "[%0t] %s completed with AHB ERROR response",
+                       $time,
+                       phase_name);
+            end
         endtask
 
 
@@ -149,7 +179,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HPROT     = HPROT_DATA;
             vif.HMASTLOCK = 1'b0;
             vif.HWDATA    = 32'd0;
-            vif.HREADY    = 1'b1;
         endtask
 
 
@@ -166,7 +195,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HPROT     = HPROT_DATA;
             vif.HMASTLOCK = 1'b0;
             vif.HWDATA    = data_phase;
-            vif.HREADY    = 1'b1;
         endtask
 
 
@@ -180,7 +208,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HPROT     = HPROT_DATA;
             vif.HMASTLOCK = 1'b0;
             vif.HWDATA    = 32'd0;
-            vif.HREADY    = 1'b1;
         endtask
 
 
@@ -194,7 +221,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HPROT     = HPROT_DATA;
             vif.HMASTLOCK = 1'b0;
             vif.HWDATA    = data_phase;
-            vif.HREADY    = 1'b1;
         endtask
 
 
@@ -259,22 +285,96 @@ package aes_ahb_lite_dma_pkg;
             output bit [31:0] data
         );
             @(negedge vif.HCLK);
-
             drive_read_direct(addr);
 
-            wait_ready_posedge();
+            // Address phase accepted.
+            wait_ready_okay_cb("AHB read address phase");
 
             @(negedge vif.HCLK);
             drive_idle_direct();
 
-            wait_ready_posedge();
-
-            #1ns;
-            data = vif.HRDATA;
+            // Data phase accepted. Sample the clocking-block value.
+            wait_ready_okay_cb("AHB read data phase");
+            data = vif.mon_cb.HRDATA;
 
             @(negedge vif.HCLK);
             drive_idle_direct();
         endtask
+
+        task automatic ahb_read_expect_error(input bit [31:0] addr);
+            int timeout_cycles;
+
+            @(negedge vif.HCLK);
+            drive_read_direct(addr);
+
+            // AHB-Lite ERROR response must be two cycles:
+            //   1) HRESP=1, HREADYOUT=0
+            //   2) HRESP=1, HREADYOUT=1
+            // Keep address/control stable until the second cycle completes.
+            timeout_cycles = 0;
+            do begin
+                @(vif.mon_cb);
+                timeout_cycles++;
+
+                if (timeout_cycles > 8) begin
+                    $fatal(1,
+                           "[%0t] Timeout waiting for ERROR cycle 1 at addr 0x%08h: HRESP=%0b HREADYOUT=%0b",
+                           $time,
+                           addr,
+                           vif.mon_cb.HRESP,
+                           vif.mon_cb.HREADYOUT);
+                end
+            end while (!(vif.mon_cb.HRESP === 1'b1 &&
+                         vif.mon_cb.HREADYOUT === 1'b0));
+
+            @(vif.mon_cb);
+
+            if (!(vif.mon_cb.HRESP === 1'b1 &&
+                  vif.mon_cb.HREADYOUT === 1'b1)) begin
+                $fatal(1,
+                       "[%0t] ERROR cycle 2 mismatch at addr 0x%08h: HRESP=%0b HREADYOUT=%0b",
+                       $time,
+                       addr,
+                       vif.mon_cb.HRESP,
+                       vif.mon_cb.HREADYOUT);
+            end
+
+            @(negedge vif.HCLK);
+            drive_idle_direct();
+
+            $display("[%0t] [AHB_ERR_TEST] Illegal access at 0x%08h produced correct two-cycle ERROR",
+                     $time,
+                     addr);
+        endtask
+
+
+        task automatic run_error_response_smoke();
+            bit [31:0] status;
+
+            $display("[%0t] [AHB_ERR_TEST] Starting illegal-access ERROR-response smoke test",
+                     $time);
+
+            // A_PTDATA is write-only in this register map. A read from it must
+            // return a two-cycle AHB-Lite ERROR response.
+            ahb_read_expect_error(A_PTDATA);
+
+            // Check that the RTL also recorded the sticky illegal-access status.
+            ahb_read(A_STATUS, status);
+
+            if (status[ST_ILLEGAL_ACCESS] !== 1'b1) begin
+                $fatal(1,
+                       "[%0t] ST_ILLEGAL_ACCESS was not set after illegal read. STATUS=0x%08h",
+                       $time,
+                       status);
+            end
+
+            // Clear sticky status before the normal DMA stream.
+            ahb_write(A_IRQ_STATUS, 32'h0000_3FFF);
+
+            $display("[%0t] [AHB_ERR_TEST] Completed illegal-access ERROR-response smoke test",
+                     $time);
+        endtask
+
 
 
         task automatic ahb_read_stream_same_addr(
@@ -289,10 +389,10 @@ package aes_ahb_lite_dma_pkg;
             end
 
             @(negedge vif.HCLK);
-
             drive_read_direct(addr);
 
-            wait_ready_posedge();
+            // First address phase accepted.
+            wait_ready_okay_cb("AHB read stream first address phase");
 
             for (int i = 0; i < count; i++) begin
                 @(negedge vif.HCLK);
@@ -303,10 +403,9 @@ package aes_ahb_lite_dma_pkg;
                     drive_idle_direct();
                 end
 
-                wait_ready_posedge();
-
-                #1ns;
-                data_q.push_back(vif.HRDATA);
+                // Data phase for read i accepted. Sample pre-edge clocking value.
+                wait_ready_okay_cb("AHB read stream data phase");
+                data_q.push_back(vif.mon_cb.HRDATA);
             end
 
             @(negedge vif.HCLK);
@@ -436,18 +535,17 @@ package aes_ahb_lite_dma_pkg;
         endtask
 
 
-        task automatic write_pt_chunk(
+        // Streaming mode: no PT_LEVEL/CT_LEVEL reads. dma_pt_req gates one
+        // complete 8-word plaintext burst; dma_ct_req gates one complete
+        // 8-word ciphertext burst.
+        task automatic write_pt_burst_no_level(
             input aes_ahb_lite_dma_transaction#(MODE) tr_q[$],
             ref   int tx_word_idx,
             input int total_words
         );
-            bit [31:0] pt_level_word;
             bit [31:0] addr_q[$];
             bit [31:0] data_q[$];
 
-            int pt_level;
-            int pt_space;
-            int chunk_words;
             int burst_idx;
             int word_in_burst;
 
@@ -457,26 +555,17 @@ package aes_ahb_lite_dma_pkg;
 
             wait_pt_space();
 
-            // Check level only once before this continuous PTDATA chunk.
-            ahb_read(A_PT_LEVEL, pt_level_word);
-
-            pt_level = pt_level_word[7:0];
-            pt_space = 8 - pt_level;
-
-            if (pt_space <= 0) begin
-                return;
-            end
-
-            chunk_words = total_words - tx_word_idx;
-
-            if (chunk_words > pt_space) begin
-                chunk_words = pt_space;
+            if ((total_words - tx_word_idx) < 8) begin
+                $fatal(1,
+                       "[%0t] PT remaining words < 8: %0d",
+                       $time,
+                       total_words - tx_word_idx);
             end
 
             addr_q.delete();
             data_q.delete();
 
-            for (int i = 0; i < chunk_words; i++) begin
+            for (int i = 0; i < 8; i++) begin
                 burst_idx     = (tx_word_idx + i) / 8;
                 word_in_burst = (tx_word_idx + i) % 8;
 
@@ -484,34 +573,19 @@ package aes_ahb_lite_dma_pkg;
                 data_q.push_back(tr_q[burst_idx].plain_text[(word_in_burst*32) +: 32]);
             end
 
-            // Continuous pipelined PTDATA write stream.
             ahb_write_stream(addr_q, data_q);
 
-            for (int i = 0; i < chunk_words; i++) begin
-                burst_idx     = (tx_word_idx + i) / 8;
-                word_in_burst = (tx_word_idx + i) % 8;
-
-            //    $display("[%0t] [DMA_STREAM_WR_PT_PIPE] burst[%0d] word[%0d] = %08h",
-            //             $time,
-            //             burst_idx,
-            //             word_in_burst,
-            //             tr_q[burst_idx].plain_text[(word_in_burst*32) +: 32]);
-            end
-
-            tx_word_idx += chunk_words;
+            tx_word_idx += 8;
         endtask
 
 
-        task automatic read_ct_chunk(
+        task automatic read_ct_burst_no_level(
             input aes_ahb_lite_dma_transaction#(MODE) tr_q[$],
             ref   int rx_word_idx,
             input int total_words
         );
-            bit [31:0] ct_level_word;
             bit [31:0] rd_q[$];
 
-            int ct_level;
-            int chunk_words;
             int burst_idx;
             int word_in_burst;
 
@@ -521,52 +595,36 @@ package aes_ahb_lite_dma_pkg;
 
             wait_ct_data();
 
-            // Check level only once before this continuous CTDATA chunk.
-            ahb_read(A_CT_LEVEL, ct_level_word);
-
-            ct_level = ct_level_word[7:0];
-
-            if (ct_level <= 0) begin
-                return;
-            end
-
-            chunk_words = total_words - rx_word_idx;
-
-            if (chunk_words > ct_level) begin
-                chunk_words = ct_level;
+            if ((total_words - rx_word_idx) < 8) begin
+                $fatal(1,
+                       "[%0t] CT remaining words < 8: %0d",
+                       $time,
+                       total_words - rx_word_idx);
             end
 
             rd_q.delete();
 
-            // Continuous pipelined CTDATA read stream.
-            ahb_read_stream_same_addr(A_CTDATA, chunk_words, rd_q);
+            ahb_read_stream_same_addr(A_CTDATA, 8, rd_q);
 
-            if (rd_q.size() != chunk_words) begin
+            if (rd_q.size() != 8) begin
                 $fatal(1,
-                       "[%0t] CT read stream returned %0d words, expected %0d",
+                       "[%0t] CT read stream returned %0d words, expected 8",
                        $time,
-                       rd_q.size(),
-                       chunk_words);
+                       rd_q.size());
             end
 
-            for (int i = 0; i < chunk_words; i++) begin
+            for (int i = 0; i < 8; i++) begin
                 burst_idx     = (rx_word_idx + i) / 8;
                 word_in_burst = (rx_word_idx + i) % 8;
 
                 tr_q[burst_idx].cipher_text[(word_in_burst*32) +: 32] = rd_q[i];
-
-                //$display("[%0t] [DMA_STREAM_RD_CT_PIPE] burst[%0d] word[%0d] = %08h",
-                //         $time,
-                //         burst_idx,
-                //         word_in_burst,
-                //         rd_q[i]);
 
                 if (word_in_burst == 7) begin
                     drv2scb.put(tr_q[burst_idx]);
                 end
             end
 
-            rx_word_idx += chunk_words;
+            rx_word_idx += 8;
         endtask
 
 
@@ -615,7 +673,7 @@ package aes_ahb_lite_dma_pkg;
             addr_q.delete();
             data_q.delete();
 
-            // Setup stream only. Plaintext is streamed later.
+            // Setup stream only. Plaintext is streamed after START using dma_pt_req.
             addr_q.push_back(A_CTRL);
             data_q.push_back(CTRL_CLEAR);
 
@@ -668,15 +726,14 @@ package aes_ahb_lite_dma_pkg;
 
                 progressed = 1'b0;
 
-                // Prefer draining ciphertext if data exists.
+                // Drain encrypted data first, then feed the next plaintext burst.
                 if ((rx_word_idx < total_words) && (vif.dma_ct_req === 1'b1)) begin
-                    read_ct_chunk(tr_q, rx_word_idx, total_words);
+                    read_ct_burst_no_level(tr_q, rx_word_idx, total_words);
                     progressed = 1'b1;
                 end
 
-                // Then feed plaintext if space exists.
                 if ((tx_word_idx < total_words) && (vif.dma_pt_req === 1'b1)) begin
-                    write_pt_chunk(tr_q, tx_word_idx, total_words);
+                    write_pt_burst_no_level(tr_q, tx_word_idx, total_words);
                     progressed = 1'b1;
                 end
 

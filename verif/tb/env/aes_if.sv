@@ -110,36 +110,27 @@ endinterface
 
 interface aes_ahb_lite_dma_if(input logic HCLK);
     logic        HRESETn;
-
-    logic        HSEL;
-    logic [31:0] HADDR;
+    logic        HSEL, HWRITE, HMASTLOCK, HREADY;
+    logic [31:0] HADDR, HWDATA, HRDATA;
     logic [1:0]  HTRANS;
-    logic        HWRITE;
-    logic [2:0]  HSIZE;
-    logic [2:0]  HBURST;
+    logic [2:0]  HSIZE, HBURST;
     logic [3:0]  HPROT;
-    logic        HMASTLOCK;
-    logic [31:0] HWDATA;
-    logic        HREADY;
-
-    logic [31:0] HRDATA;
-    logic        HREADYOUT;
-    logic        HRESP;
-
-    logic        dma_pt_req;
-    logic        dma_ct_req;
-    logic        irq;
+    logic        HREADYOUT, HRESP;
+    logic        dma_pt_req, dma_ct_req, irq;
 
     clocking drv_cb @(posedge HCLK);
         default input #3ns output #2ns;
-        output HSEL, HADDR, HTRANS, HWRITE, HSIZE, HBURST, HPROT, HMASTLOCK, HWDATA, HREADY;
-        input HRDATA, HREADYOUT, HRESP;
+        output HSEL, HADDR, HTRANS, HWRITE, HSIZE;
+        output HBURST, HPROT, HMASTLOCK, HWDATA;
+        input HREADY, HRDATA, HREADYOUT, HRESP;
         input dma_pt_req, dma_ct_req, irq;
     endclocking
 
     clocking mon_cb @(posedge HCLK);
         default input #5ns output #0;
-        input HSEL, HADDR, HTRANS, HWRITE, HSIZE, HBURST, HPROT, HMASTLOCK, HWDATA, HREADY;
+        input HRESETn;
+        input HSEL, HADDR, HTRANS, HWRITE, HSIZE;
+        input HBURST, HPROT, HMASTLOCK, HWDATA, HREADY;
         input HRDATA, HREADYOUT, HRESP;
         input dma_pt_req, dma_ct_req, irq;
     endclocking
