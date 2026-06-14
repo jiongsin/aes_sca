@@ -1,3 +1,5 @@
+
+
 # ========================================================================
 # AES Design Automation Environment
 # ========================================================================
@@ -116,8 +118,8 @@ PT_SHELL      = pt_shell
 # Targets
 .PHONY: all libv sim saif verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp pnr pnr.sim pnr.verdi pnr.psim pnr.tvla pnr.all pnr.alp sta repeat debug help
 
-all: sim saif syn saif syn.sim pnr pnr.sim sta
-all.tvla: sim saif syn syn.sim pnr pnr.sim sta pnr.alp
+all: sim saif syn saif syn.sim pnr pnr.sim pnr.psim sta
+all.tvla: sim saif syn syn.sim pnr pnr.alp sta
 
 libv:
 	@cp syn/scripts/dc_lib_setup_$(LIBV)nm.tcl syn/scripts/dc_lib_setup.tcl
@@ -249,7 +251,7 @@ pnr.verdi:
 
 pnr.psim:
 	@echo "Starting Power Simulation for $(DESIGN_VER)..."
-	@rm -rf $(PNR_RES)/tvla_$(TVLA)*
+	@rm -rf $(PNR_RES)/tvla*
 	@cd $(PNR_DIR) && \
 	 export DESIGN=$(DESIGN) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \

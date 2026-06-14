@@ -301,14 +301,14 @@ module aes_operation_sca #(
                     end
                     
                     if (cycle_cnt >= 4'd5 && cycle_cnt <= 4'd8) begin
-                        state_reg_A_0 <= {round_data_out_0 ^ random_bits[31:0], state_reg_A_0[127:32]};
-                        state_reg_A_1 <= {round_data_out_1 ^ random_bits[31:0], state_reg_A_1[127:32]};
+                        state_reg_A_0 <= {round_data_out_0, state_reg_A_0[127:32]};
+                        state_reg_A_1 <= {round_data_out_1, state_reg_A_1[127:32]};
                     end
                     
                     if (cycle_cnt >= 4'd0 && cycle_cnt <= 4'd3) begin
                         if (round_cnt > 4'd1) begin
-                            state_reg_B_0 <= {round_data_out_0 ^ random_bits[31:0], state_reg_B_0[127:32]};
-                            state_reg_B_1 <= {round_data_out_1 ^ random_bits[31:0], state_reg_B_1[127:32]};
+                            state_reg_B_0 <= {round_data_out_0, state_reg_B_0[127:32]};
+                            state_reg_B_1 <= {round_data_out_1, state_reg_B_1[127:32]};
                         end else if (valid_in) begin
                             state_reg_B_0 <= {data_in ^ data_mask ^ current_round_key_word_0, state_reg_B_0[127:32]};
                             state_reg_B_1 <= {data_mask ^ current_round_key_word_1, state_reg_B_1[127:32]};
@@ -318,8 +318,8 @@ module aes_operation_sca #(
                 
                 S_OUTPUT: begin
                     if (cycle_cnt >= 4'd0 && cycle_cnt <= 4'd3) begin
-                        state_reg_B_0 <= {round_data_out_0 ^ random_bits[31:0], state_reg_B_0[127:32]};
-                        state_reg_B_1 <= {round_data_out_1 ^ random_bits[31:0], state_reg_B_1[127:32]};
+                        state_reg_B_0 <= {round_data_out_0, state_reg_B_0[127:32]};
+                        state_reg_B_1 <= {round_data_out_1, state_reg_B_1[127:32]};
                         
                         state_reg_A_0 <= {32'd0, state_reg_A_0[127:32]};
                         state_reg_A_1 <= {32'd0, state_reg_A_1[127:32]};
