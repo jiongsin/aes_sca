@@ -45,8 +45,16 @@ module aes_operation_sca #(
     wire [31:0] round_data_out_0, round_data_out_1;
     wire [31:0] expanded_key_word_0, expanded_key_word_1;
 
-    wire [31:0] key_mask = random_bits[63:32];
-    wire [31:0] data_mask = random_bits[31:0];
+    wire [31:0] key_mask;
+    wire [31:0] data_mask;
+
+    genvar m;
+    generate
+        for (m = 31; m >= 0; m = m - 1) begin : spread_masks
+            assign data_mask[m] = random_bits[m * 4];
+            assign key_mask[m]  = random_bits[(m * 4) + 2];
+        end
+    endgenerate
 
     wire [31:0] masked_key_in_0 = key_in ^ key_mask;
     wire [31:0] masked_key_in_1 = key_mask;

@@ -32,8 +32,6 @@ set version $env(version)
 set fifo_depth 8
 set burst_cnt_w 32
 
-
-# The available AHB-Lite DMA wrapper is the secure SCA version.
 if { $version != "sca" } {
     echo "ERROR: aes_ahb_lite_dma_${version}.v is not expected in this flow. Use version=sca."
     exit 1

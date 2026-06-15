@@ -29,7 +29,7 @@ endif
 PERIOD      ?= 10.0
 PERIOD_TAG   = $(subst .,p,$(PERIOD))ns
 TEST_CNT    ?= 100
-TVLA        ?= none 
+TVLA        ?= none
 TVLA_CAP     = $(shell echo $(TVLA) | tr a-z A-Z)
 N           ?= 10
 CMD         ?=
@@ -56,20 +56,23 @@ ifeq ($(TVLA),static)
     SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER)_tvla_static.log
     PNR_SIM      = $(PNR_RES)/sim_static
     PNR_PSIM_LOG = $(PNR_DIR)/logs/$(DESIGN_VER)_tvla_static.log
+    TVLA_DIR     = tvla_static
 else ifeq ($(TVLA),dynamic)
     SYN_SIM      = $(SYN_RES)/sim_dynamic
     SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER)_tvla_dynamic.log
     PNR_SIM      = $(PNR_RES)/sim_dynamic
     PNR_PSIM_LOG = $(PNR_DIR)/logs/$(DESIGN_VER)_tvla_dynamic.log
+    TVLA_DIR     = tvla_dynamic
 else 
     SYN_SIM      = $(SYN_RES)/sim
     SYN_PSIM_LOG = $(SYN_DIR)/logs/$(DESIGN_VER).log
     PNR_SIM      = $(PNR_RES)/sim
-    PNR_PSIM_LOG = $(PNR_DIR)/logs/$(DESIGN_VER)_tvla.log
+    PNR_PSIM_LOG = $(PNR_DIR)/logs/$(DESIGN_VER)_psim.log
+    TVLA_DIR     = psim
 endif
-SYN_PSIM_TCL = $(SYN_DIR)/scripts/$(DESIGN)_tvla.tcl
+SYN_PSIM_TCL = $(SYN_DIR)/scripts/aes_psim.tcl
 SYN_NTL      = $(SYN_RES)/$(DESIGN_VER)_ntl.v
-PNR_PSIM_TCL = $(PNR_DIR)/scripts/$(DESIGN)_tvla.tcl
+PNR_PSIM_TCL = $(PNR_DIR)/scripts/aes_psim.tcl
 PNR_NTL      = $(PNR_RES)/$(DESIGN_VER).v
 
 PNR_STA_TCL  = $(PNR_DIR)/scripts/aes_sta.tcl
@@ -180,7 +183,7 @@ syn.verdi:
 
 syn.psim:
 	@echo "Starting Power Simulation for $(DESIGN_VER)..."
-	@rm -rf $(SYN_RES)/tvla_$(TVLA)*
+	@rm -rf $(SYN_RES)/$(TVLA_DIR)
 	@cd $(SYN_DIR) && \
 	 export DESIGN=$(DESIGN) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
@@ -251,7 +254,7 @@ pnr.verdi:
 
 pnr.psim:
 	@echo "Starting Power Simulation for $(DESIGN_VER)..."
-	@rm -rf $(PNR_RES)/tvla*
+	@rm -rf $(PNR_RES)/${TVLA_DIR}
 	@cd $(PNR_DIR) && \
 	 export DESIGN=$(DESIGN) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
@@ -259,6 +262,8 @@ pnr.psim:
 	 export TVLA=$(TVLA) && \
  	 export PERIOD=$(PERIOD) && \
 	 $(PT_SHELL) -f $(PNR_PSIM_TCL) | tee -i $(PNR_PSIM_LOG)
+	@cd $(PNR_DIR)/scripts && python3 ppa_report.py
+
 
 pnr.tvla:
 	@echo "Starting Leakage Assessment for $(DESIGN_VER)..."
@@ -293,6 +298,7 @@ sta:
 	 export VER=$(VER) && \
 	 export DESIGN_VER=$(DESIGN_VER) && \
 	 $(PT_SHELL) -f $(PNR_STA_TCL) | tee -i $(PNR_STA_LOG)
+	@cd $(PNR_DIR)/scripts && python3 ppa_report.py
 
 repeat:
 	@for i in $$(seq 1 $(N)); do \
