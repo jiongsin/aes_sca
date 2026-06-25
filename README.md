@@ -1,1 +1,7 @@
-ASIC DESIGN OF SIDE-CHANNEL RESILIENT AES-GCM ACCELERATOR FOR IOT APPLICATIONS
+# ASIC Design of a Side-Channel-Resilient AES-128-CTR Accelerator for IoT Applications
+
+This repository contains the implementation artifact for the thesis on an ASIC-oriented side-channel-resilient AES-128-CTR accelerator for secure IoT systems. The implementation is organized around three evaluated design objects: an unprotected AES-128 baseline accelerator, a protected AES-128 core using masking-oriented and DOM-inspired nonlinear logic, and a system-integrated AES-128-CTR accelerator with an AHB-Lite register interface and DMA-style streaming support.
+
+The RTL includes baseline AES operation modules, protected AES operation modules, a composite-field protected S-box, an AES-CTR wrapper, and an AHB-Lite/DMA-style accelerator wrapper. The verification environment contains SystemVerilog testbenches, transaction-level drivers, monitors, scoreboards, and DPI-C reference models for AES and AES-CTR correctness. The implementation flow includes scripts for RTL simulation, synthesis, post-synthesis gate-level simulation, place-and-route, post-layout simulation, static timing analysis, power analysis, and fixed-versus-random TVLA-style leakage assessment using simulated power traces.
+
+For thesis submission and result-level reproducibility, the generated synthesis, place-and-route, timing, power, simulation, and TVLA reports corresponding to the reported numerical results should be archived together with the exact repository branch and commit hash used for the final thesis tables and plots.
