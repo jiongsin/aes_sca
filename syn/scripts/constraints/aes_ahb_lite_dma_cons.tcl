@@ -6,6 +6,7 @@ echo "----------------------------------------------------------------"
 
 # PARAMETERS
 set CLK_PORT_NAME "HCLK"
+set RST_PORT_NAME "HRESETn"
 set CLK_PERIOD 10.0
 set period [string map {. p} $CLK_PERIOD]
 set DELAY [expr $CLK_PERIOD * 0.40]
@@ -31,10 +32,10 @@ set_driving_cell -lib_cell INVX1_HVT $all_inputs_no_clk
 set_load 0.05 [all_outputs]
 set_max_transition 0.5 [current_design]
 
-# Stop the compiler from buffering the reset wire
+# Stop the compiler from buffering the clock and reset wires.
 set_propagated_clock [all_clocks]
 set_ideal_network [get_ports clk]
-set_ideal_network [get_ports rst_n]
+set_ideal_network [get_ports $RST_PORT_NAME]
 
 set_fix_multiple_port_nets -all -buffer_constant
 change_names -rules verilog -hierarchy
