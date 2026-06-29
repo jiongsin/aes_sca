@@ -1,35 +1,11 @@
-############################################################
-# ICC2 CTS Script
-# DOM-based Masked AES Accelerator
-#
-# Input block:
-#   ${ntl_ver}_final_floorplan_place
-#
-# Output block:
-#   ${ntl_ver}_after_cts
-#
-# Report numbering starts at 16 because placement ended at:
-#   15_stage_status_summary.rpt
-#
-# Notes:
-# - Starts from saved floorplan/place block.
-# - Does NOT read Verilog again.
-# - Does NOT redo floorplan/place.
-# - Removes fillers before CTS.
-# - Does NOT reinsert fillers during CTS.
-# - Uses classic CTS by default for balanced clock delivery.
-# - CCD is optional and disabled by default for DOM/SCA stability.
-############################################################
+# ICC2 clock-tree-synthesis script for the AES PNR flow.
+# Opens the placed AES block, removes fillers, applies CTS/security options, builds the clock tree, checks timing/legality, and saves the post-CTS block.
 
 source ./scripts/icc2_lib_setup.tcl
 
 set mode    $env(MODE)
 set version $env(VER)
 set ntl_ver $env(DESIGN_VER)
-
-############################################################
-# 0. User switches
-############################################################
 
 set INPUT_BLOCK  ${ntl_ver}_final_floorplan_place
 set OUTPUT_BLOCK ${ntl_ver}_after_cts
@@ -39,8 +15,6 @@ set USE_CCD 0
 set USE_RESTRICT_CTS_LIBCELLS 0
 set USE_CLOCK_NDR 0
 
-# Do not insert fillers in CTS stage.
-# Fillers can be inserted later after legal CTS / route_opt.
 set INSERT_FILLERS_IN_CTS 0
 
 set FILLER_CELLS {saed32hvt/SHFILL*}
@@ -51,19 +25,11 @@ if {$USE_CCD} {
     set CTS_FLOW_NAME "Classic CTS"
 }
 
-############################################################
-# 1. Directory setup
-############################################################
-
 set OUTPUT_DIR ./results/${ntl_ver}
 set REPORT_DIR ${OUTPUT_DIR}/reports
 
 file mkdir $OUTPUT_DIR
 file mkdir $REPORT_DIR
-
-############################################################
-# 2. Helper procedures
-############################################################
 
 proc safe_set_app_option {opt val} {
     if {[catch {set_app_options -name $opt -value $val} msg]} {
@@ -107,10 +73,6 @@ proc remove_all_fillers {} {
     puts "INFO: Filler-like cells after cleanup: [sizeof_collection $filler_check]"
 }
 
-############################################################
-# 3. Open saved placement block
-############################################################
-
 puts "INFO: Opening input block: $INPUT_BLOCK"
 
 open_block $INPUT_BLOCK
@@ -122,10 +84,6 @@ redirect -file ${REPORT_DIR}/16_opened_block_summary.rpt {
     report_design -summary
     report_utilization
 }
-
-############################################################
-# 4. Check existing MCMM scenarios
-############################################################
 
 set slow_scen [get_scenarios -quiet func.slow_max]
 set fast_scen [get_scenarios -quiet func.fast_min]
@@ -159,10 +117,6 @@ if {[sizeof_collection $fast_scen] > 0} {
 redirect -file ${REPORT_DIR}/17_mcmm_scenarios.rpt {
     report_scenarios
 }
-
-############################################################
-# 5. Pre-CTS checks
-############################################################
 
 redirect -file ${REPORT_DIR}/18_pre_cts_check_design.rpt {
     check_design -checks pre_clock_tree_stage
@@ -235,10 +189,6 @@ redirect -file ${REPORT_DIR}/21_pre_cts_drv.rpt {
     }
 }
 
-############################################################
-# 6. Remove fillers before CTS
-############################################################
-
 remove_all_fillers
 
 connect_pg_net -automatic
@@ -266,10 +216,6 @@ redirect -file ${REPORT_DIR}/23b_pre_cts_filler_check.rpt {
     set ff [add_to_collection $ff $f4]
     puts "Remaining filler-like cells before CTS: [sizeof_collection $ff]"
 }
-
-############################################################
-# 7. DOM/SCA pre-CTS structure report
-############################################################
 
 if {$USE_DOM_SECURITY_RULES} {
 
@@ -319,10 +265,6 @@ if {$USE_DOM_SECURITY_RULES} {
     }
 }
 
-############################################################
-# 8. Clock structure reports
-############################################################
-
 redirect -file ${REPORT_DIR}/25_clock_structure_pre_cts.rpt {
     puts "===== clocks ====="
     report_clocks
@@ -346,10 +288,6 @@ redirect -file ${REPORT_DIR}/25_clock_structure_pre_cts.rpt {
     puts $cto_msg
 }
 
-############################################################
-# 9. CTS setup
-############################################################
-
 if {$USE_CCD} {
     safe_set_app_option clock_opt.flow.enable_ccd true
     safe_set_app_option ccd.hold_control_effort high
@@ -360,9 +298,6 @@ if {$USE_CCD} {
 safe_set_app_option cts.common.enable_auto_exceptions true
 safe_set_app_option cts.common.verbose 1
 
-# Important change:
-# false gives legalizer/CTS more freedom. The previous result still had
-# hundreds of overlap violations after CTS.
 safe_set_app_option cts.compile.fix_clock_tree_sinks false
 
 safe_set_app_option cts.compile.enable_cell_relocation timing_aware
@@ -373,13 +308,8 @@ safe_set_app_option opt.common.hold_effort high
 
 safe_set_app_option cts.compile.remove_existing_clock_trees true
 
-# Stronger legalizer behavior.
 safe_set_app_option place.legalize.enable_advanced_legalizer true
 safe_set_app_option place.legalize.always_continue false
-
-############################################################
-# 10. Optional CTS lib-cell restriction
-############################################################
 
 if {$USE_RESTRICT_CTS_LIBCELLS} {
 
@@ -413,10 +343,6 @@ if {$USE_RESTRICT_CTS_LIBCELLS} {
         puts "CTS lib-cell restriction skipped."
     }
 }
-
-############################################################
-# 11. Optional clock NDR / routing rule setup
-############################################################
 
 if {$USE_CLOCK_NDR} {
 
@@ -479,10 +405,6 @@ redirect -append -file ${REPORT_DIR}/26_cts_setup_options.rpt {
     puts $rcbp_msg
 }
 
-############################################################
-# 12. CTS stage 1: build clock
-############################################################
-
 clock_opt \
     -to build_clock
 
@@ -514,10 +436,6 @@ redirect -file ${REPORT_DIR}/28a_after_build_clock_legality.rpt {
 
 save_block -as ${ntl_ver}_cts_build_clock
 save_lib
-
-############################################################
-# 13. CTS stage 2: route clock
-############################################################
 
 clock_opt \
     -from route_clock \
@@ -559,15 +477,9 @@ redirect -file ${REPORT_DIR}/30a_after_route_clock_legality.rpt {
 save_block -as ${ntl_ver}_cts_route_clock
 save_lib
 
-############################################################
-# 14. CTS stage 3: final optimization
-############################################################
-
 clock_opt \
     -from final_opto
 
-# Do not insert fillers here.
-# Just legalize CTS and optimization cells.
 legalize_placement
 
 redirect -file ${REPORT_DIR}/31a_post_cts_check_legality.rpt {
@@ -578,11 +490,6 @@ redirect -file ${REPORT_DIR}/31a_post_cts_check_legality.rpt {
 save_block -as ${ntl_ver}_cts_final_opto
 save_lib
 
-############################################################
-# 15. Post-CTS PG repair
-############################################################
-
-# Make sure fillers are still absent.
 remove_all_fillers
 
 connect_pg_net -automatic
@@ -614,10 +521,6 @@ redirect -file ${REPORT_DIR}/32a_post_cts_filler_check.rpt {
     set ff [add_to_collection $ff $f4]
     puts "Remaining filler-like cells after CTS: [sizeof_collection $ff]"
 }
-
-############################################################
-# 16. Post-CTS QoR, timing, and DRV reports
-############################################################
 
 redirect -file ${REPORT_DIR}/33_post_cts_qor.rpt {
     report_qor -summary
@@ -751,10 +654,6 @@ redirect -file ${REPORT_DIR}/36a_sca_register_clock_timing.rpt {
     }
 }
 
-############################################################
-# 17. Post-CTS DOM/SCA report
-############################################################
-
 if {$USE_DOM_SECURITY_RULES} {
     redirect -file ${REPORT_DIR}/37_post_cts_dom_security.rpt {
         puts "===== DOM/SCA post-CTS structure report ====="
@@ -779,10 +678,6 @@ if {$USE_DOM_SECURITY_RULES} {
     }
 }
 
-############################################################
-# 18. Post-CTS congestion check
-############################################################
-
 route_global \
     -effort_level high \
     -congestion_map_only true
@@ -791,17 +686,9 @@ redirect -file ${REPORT_DIR}/38_post_cts_congestion.rpt {
     report_congestion
 }
 
-############################################################
-# 19. Pre-route readiness check
-############################################################
-
 redirect -file ${REPORT_DIR}/39_check_design_pre_route.rpt {
     check_design -checks pre_route_stage
 }
-
-############################################################
-# 20. CTS stage summary
-############################################################
 
 redirect -file ${REPORT_DIR}/40_cts_stage_summary.rpt {
     puts "===== CTS Stage Summary ====="
@@ -833,15 +720,7 @@ redirect -file ${REPORT_DIR}/40_cts_stage_summary.rpt {
     puts "  Insert fillers later only after CTS legality is clean."
 }
 
-############################################################
-# 21. Save final CTS checkpoint
-############################################################
-
 save_block -as $OUTPUT_BLOCK
 save_lib
-
-############################################################
-# End of CTS script
-############################################################
 
 # exit

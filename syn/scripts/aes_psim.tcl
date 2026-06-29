@@ -1,4 +1,6 @@
-# Setup Environment
+# PrimePower simulation power-analysis script for AES designs.
+# Sets the analysis work area, reads the generated netlist, constraints, SDF, and FSDB activity, checks switching activity, runs averaged power analysis, and writes reports.
+
 source ./scripts/pt_lib_setup.tcl
 
 set_app_var power_enable_analysis true
@@ -16,7 +18,6 @@ if {$DESIGN eq "aes_ahb_lite_dma"} {
     set TOP_MODULE ${DESIGN}_${VER}_MODE${MODE}
 }
 
-# Select paths based on TVLA mode
 if {($TVLA eq "dynamic") || ($TVLA eq "static")} {
     set RESULT_DIR ./results/${DESIGN_VER}/tvla_${TVLA}
     set SIM_DIR    ./results/${DESIGN_VER}/sim_${TVLA}
@@ -36,7 +37,6 @@ read_verilog ${DESIGN_VER}_ntl.v
 link_design ${TOP_MODULE}
 current_design ${TOP_MODULE}
 
-# Define Constraint
 if {$DESIGN eq "aes_ahb_lite_dma"} {
     create_clock -name clk -period 10.0 [get_ports HCLK]
 } else {
@@ -44,32 +44,17 @@ if {$DESIGN eq "aes_ahb_lite_dma"} {
 }
 set_propagated_clock [all_clocks]
 
-# Read the SDF file
 read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}_func_slow_max.sdf
 
-# Annotate Activity from VCS Simulation Using time-based mode for FSDB
 set_app_var power_analysis_mode time_based
 
 read_fsdb ${SIM_DIR}/${DESIGN_VER}.fsdb \
     -strip_path ${DESIGN}_tb/dut
 
-# To use VCD instead:
-# read_vcd ${SIM_DIR}/aes_operation.vcd \
-#     -strip_path aes_operation_tb/dut
-
-# Check and Report Activity
 report_switching_activity > ${RESULT_DIR}/switching_activity.rpt
 report_annotated_delay > ${RESULT_DIR}/annotated_delay.rpt
 
 check_power
-
-# Configure Power Analysis Options
-
-# FSDB waveform output option:
-# set_power_analysis_options -waveform_format fsdb \
-#                            -waveform_interval 0.001 \
-#                            -waveform_output ${TRACE_DIR}
-# update_power
 
 set_power_analysis_options -waveform_format out \
                            -waveform_interval 0.05 \

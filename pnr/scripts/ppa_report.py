@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# PPA overview report generator for AES PNR results.
+# Scans post-layout report directories, extracts setup/hold timing, power, area, and kGE metrics, then writes a consolidated PPA summary report.
+
 import os
 import re
 import sys
@@ -13,11 +16,7 @@ POWER_REPORTS = [
     "power_psim.rpt",
 ]
 
-# kGE = Design Area / NAND2_AREA / 1000
-# Override if needed:
-#   export NAND2_AREA=<your_nand2_area>
 DEFAULT_NAND2_AREA = 2.54144
-
 
 def read_text(path):
     try:
@@ -25,38 +24,28 @@ def read_text(path):
     except FileNotFoundError:
         return None
 
-
 def to_float(x):
     try:
         return float(x)
     except Exception:
         return None
 
-
 def fmt4(x):
     return "NA" if x is None else f"{x:.4f}"
-
 
 def fmt2(x):
     return "NA" if x is None else f"{x:.2f}"
 
-
 def fmt_pct(x):
     return "NA" if x is None else f"{x:.1f}"
-
 
 def percent(part, total):
     if part is None or total is None or total == 0:
         return None
     return part / total * 100.0
 
-
 def select_power_unit(total_power_w):
-    """
-    Select one display unit based on Total Power.
-    The same unit is used for Total, Dynamic, Static,
-    Internal, Switching, Peak, X Transition, and Glitching power.
-    """
+
     if total_power_w is None:
         return "uW", 1e6
 
@@ -73,28 +62,22 @@ def select_power_unit(total_power_w):
     else:
         return "pW", 1e12
 
-
 def fmt_power(value_w, scale):
     if value_w is None:
         return "NA"
     return f"{value_w * scale:.4f}"
 
-
 def parse_period_from_design_name(design_name):
-    # Example:
-    #   aes_operation_base_MODE128_10p0ns -> 10.0
+
     m = re.search(r"_([0-9]+)p([0-9]+)ns$", design_name)
     if m:
         return float(f"{m.group(1)}.{m.group(2)}")
 
-    # Example:
-    #   design_10ns -> 10.0
     m = re.search(r"_([0-9]+(?:\.[0-9]+)?)ns$", design_name)
     if m:
         return float(m.group(1))
 
     return None
-
 
 def parse_qor_timing(text, timing_type, preferred_group="clk"):
     if text is None:
@@ -136,18 +119,15 @@ def parse_qor_timing(text, timing_type, preferred_group="clk"):
 
         groups.append(data)
 
-    # Prefer clk group.
     for item in groups:
         if item["group"] == preferred_group:
             return item
 
-    # Fallback: choose worst slack group.
     valid = [x for x in groups if x["slack"] is not None]
     if valid:
         return sorted(valid, key=lambda x: x["slack"])[0]
 
     return None
-
 
 def parse_qor_area(text):
     area = {
@@ -171,7 +151,6 @@ def parse_qor_area(text):
             area[key] = to_float(m.group(1))
 
     return area
-
 
 def parse_power_report(path):
     text = read_text(path)
@@ -206,7 +185,6 @@ def parse_power_report(path):
 
     return data
 
-
 def select_max_power_report(reports_sta_dir):
     candidates = []
 
@@ -220,7 +198,6 @@ def select_max_power_report(reports_sta_dir):
         return None
 
     return max(candidates, key=lambda x: x["total_power"])
-
 
 def area_mismatch_warning(setup_area, hold_area, tol=1e-3):
     keys = [
@@ -245,7 +222,6 @@ def area_mismatch_warning(setup_area, hold_area, tol=1e-3):
 
     return warnings
 
-
 def write_design_report(lines, design_dir, nand2_area):
     design_name = design_dir.name
     reports_sta = design_dir / "reports_sta"
@@ -262,8 +238,6 @@ def write_design_report(lines, design_dir, nand2_area):
     setup_area = parse_qor_area(setup_text)
     hold_area = parse_qor_area(hold_text)
 
-    # Area is taken from setup QoR by default.
-    # If setup QoR is missing, fallback to hold QoR.
     area = setup_area
     if area["design_area"] is None:
         area = hold_area
@@ -381,7 +355,6 @@ def write_design_report(lines, design_dir, nand2_area):
 
     return area_mismatch_warning(setup_area, hold_area)
 
-
 def main():
     workarea = os.environ.get("WORKAREA")
     if not workarea:
@@ -434,6 +407,6 @@ def main():
         for warning in all_warnings:
             print(f"  WARNING: {warning}", file=sys.stderr)
 
-
 if __name__ == "__main__":
     main()
+

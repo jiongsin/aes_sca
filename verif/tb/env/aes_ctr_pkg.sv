@@ -1,3 +1,9 @@
+//------------------------------------------------------------------------------
+// File        : aes_ctr_pkg.sv
+// Description : SystemVerilog verification package for the AES CTR testbench.
+//               Defines CTR transactions, driver and monitor behavior, DPI reference-model comparison, scoreboard reporting, and coverage sampling.
+//------------------------------------------------------------------------------
+
 package aes_ctr_pkg;
 
     import "DPI-C" function void aes_ctr_ref_model(
@@ -9,9 +15,6 @@ package aes_ctr_pkg;
         output bit [255:0] ct
     );
 
-    // ============================================================
-    // Transaction
-    // ============================================================
     class aes_ctr_transaction #(parameter MODE = 128);
 
         rand bit [MODE-1:0] key;
@@ -77,10 +80,6 @@ package aes_ctr_pkg;
 
     endclass
 
-
-    // ============================================================
-    // Driver
-    // ============================================================
     class aes_ctr_driver #(parameter MODE = 128);
 
         virtual aes_ctr_if#(MODE) vif;
@@ -93,7 +92,6 @@ package aes_ctr_pkg;
             this.vif     = vif;
             this.gen2drv = gen2drv;
         endfunction
-
 
         task automatic drive_plaintext_and_wait_output(
             input aes_ctr_transaction#(MODE) trans,
@@ -144,7 +142,6 @@ package aes_ctr_pkg;
             vif.drv_cb.pt_in    <= 32'd0;
             vif.drv_cb.stop     <= 1'b0;
         endtask
-
 
         task run();
             bit is_continuous;
@@ -206,10 +203,6 @@ package aes_ctr_pkg;
 
     endclass
 
-
-    // ============================================================
-    // Monitor
-    // ============================================================
     class aes_ctr_monitor #(parameter MODE = 128);
 
         virtual aes_ctr_if#(MODE) vif;
@@ -222,7 +215,6 @@ package aes_ctr_pkg;
             this.vif     = vif;
             this.mon2scb = mon2scb;
         endfunction
-
 
         task run();
             aes_ctr_transaction#(MODE) trans;
@@ -316,10 +308,6 @@ package aes_ctr_pkg;
 
     endclass
 
-
-    // ============================================================
-    // Scoreboard
-    // ============================================================
     class aes_ctr_scoreboard #(parameter MODE = 128);
 
         mailbox mon2scb;
@@ -330,7 +318,6 @@ package aes_ctr_pkg;
         function new(mailbox mon2scb);
             this.mon2scb = mon2scb;
         endfunction
-
 
         task run();
             aes_ctr_transaction#(MODE) trans;
@@ -462,7 +449,6 @@ package aes_ctr_pkg;
                 end
             end
         endtask
-
 
         function void report();
             $display("\n========================================");

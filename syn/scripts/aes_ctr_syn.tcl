@@ -1,8 +1,8 @@
+# Synthesis script for the AES CTR implementation.
+# Configures the selected AES key size/version, reads the CTR datapath RTL, applies constraints and SCA preservation settings, compiles, reports, and writes output netlists.
+
 source ./scripts/dc_lib_setup.tcl
 
-# =====================================================================
-# 1. SETUP & READ
-# =====================================================================
 set mode $env(mode)
 set version $env(version)
 
@@ -25,65 +25,46 @@ current_design [get_designs ${rtl_top}*]
 if {[link] == 0} { echo "Error: Linking Failed"; exit 1 }
 if {[check_design] == 0} { echo "Error: Check Design Failed"; exit 1 }
 
-# =====================================================================
-# 2. APPLY CONSTRAINTS
-# =====================================================================
 source -echo -verbose ./scripts/constraints/aes_ctr_cons.tcl
 
-# =====================================================================
-# 3. SCA PRESERVATION CONSTRAINTS
-# =====================================================================
 echo "Applying Side Channel Security Constraints..."
 
 if { $version == "sca" } {
-    # 1. Protect DOM AND Gates
     set_ungroup [get_designs *dom_and_sca*] false
     set_boundary_optimization [get_designs *dom_and_sca*] false
 
-    # Stop constants from sneaking through the boundary
     set_app_var compile_enable_constant_propagation_with_no_boundary_opt false
-    
-    # Protect combinational nets inside DOM
+
     set_dont_touch [get_nets -hierarchical *cross_*_comb*]
     set_dont_touch [get_nets -hierarchical *inner_0*]
     set_dont_touch [get_nets -hierarchical *inner_1*]
 
-    # 2. Protect Logic Boundaries and Masks
     set_dont_touch [get_nets *random_bits*]
     set_dont_touch [get_nets -hierarchical *data_mask*]
     set_dont_touch [get_nets -hierarchical *key_mask*]
-     
-    # Protect initial masking boundaries
+
     set_dont_touch [get_nets -hierarchical *masked_key_in_0*]
     set_dont_touch [get_nets -hierarchical *masked_key_in_1*]
 
-    # Protect Sbox boundaries
     set_dont_touch [get_nets -hierarchical *subbytes_out_0*]
     set_dont_touch [get_nets -hierarchical *subbytes_out_1*]
 
-    # Protect key expansion boundaries
     set_dont_touch [get_nets -hierarchical *expanded_key_word_0*]
     set_dont_touch [get_nets -hierarchical *expanded_key_word_1*]
 
-    # 3. Protect Sbox Math Blocks
     set_ungroup [get_designs *multiplicative_inverter_sca*] false
 }
 
-# Enable global merging for normal logic save area
 set_optimize_registers true
 set_app_var compile_enable_register_merging true
 set_register_merging [all_registers] true
 
-# Strictly protect only the DOM registers using a safe search
 set protected_regs [get_cells -hierarchical {*state_reg_* *cross_*_reg* *inner_*_reg* *u_aes_prng* *state_reg* *count_reg* *cycle_cnt_reg* *round_cnt_reg*} -quiet]
 if {[sizeof_collection $protected_regs] > 0} {
     set_register_merging $protected_regs false
     set_dont_retime $protected_regs true
 }
 
-# =====================================================================
-# 4. OPTIMIZATION & COMPILE
-# =====================================================================
 if {[shell_is_in_topographical_mode]} {
     set_aspect_ratio 1
     set_utilization 0.7
@@ -93,22 +74,19 @@ set run_name "${rtl_top}_MODE${mode}_${period}ns"
 read_saif -input ../verif/sim/${run_name}/${run_name}.saif -instance_name aes_ctr_tb/dut
 
 set_cost_priority -delay
-set_dynamic_optimization true 
+set_dynamic_optimization true
 set_leakage_optimization true
 
-# Enable Clock Gating for Power Savings
 if { $version == "sca" } {
     set_clock_gating_style -minimum_bitwidth 32 -positive_edge_logic {integrated} -control_point before
-#    insert_clock_gating -global
 }
 
 check_timing
 
-# Compile with gate clock enabled
 if { $version == "sca" } {
     compile_ultra -no_autoungroup -gate_clock
 } else {
-    compile_ultra 
+    compile_ultra
 }
 
 set setup_worst_path [get_timing_paths -delay_type max -nworst 1]
@@ -117,9 +95,9 @@ if {[sizeof_collection $setup_worst_path] > 0} {
     if {$setup_worst_slack < 0} {
         echo "Negative Setup Slack ($setup_worst_slack) found. Retrying..."
 	if { $version == "sca" } {
-            compile_ultra -no_autoungroup -gate_clock -incremental 
+            compile_ultra -no_autoungroup -gate_clock -incremental
         } else {
-            compile_ultra -incremental 
+            compile_ultra -incremental
         }
     }
 }
@@ -131,16 +109,13 @@ if {[sizeof_collection $hold_worst_path] > 0} {
         echo "Negative Hold Slack ($hold_worst_slack) found. Retrying..."
 	set_fix_hold [get_clocks clk]
         compile_ultra -incremental -only_design_rule
-	compile_ultra -incremental 
+	compile_ultra -incremental
     }
 }
 
 check_design
 check_timing
 
-# =====================================================================
-# 5. OUTPUTS
-# =====================================================================
 file mkdir ./results/${run_name}
 file mkdir ./results/${run_name}/reports
 

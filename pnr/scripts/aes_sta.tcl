@@ -1,15 +1,5 @@
-
-############################################################
-# PrimeTime STA Script
-# DOM-based Masked AES Accelerator
-#
-# Run:
-#   pt_shell -f scripts/aes_sta.tcl | tee -i logs/aes_sta.log
-############################################################
-
-############################################################
-# 0. User variables
-############################################################
+# PrimeTime static timing and power reporting script for AES post-layout results.
+# Loads exported PNR handoff files, analyzes setup/hold scenarios, writes timing/QoR/constraint reports, optionally annotates activity, and generates power reports.
 
 set DESIGN     $env(DESIGN)
 set MODE       $env(MODE)
@@ -36,44 +26,14 @@ set HOLD_SCENARIO  func.fast_min
 
 set scenarios [list $SETUP_SCENARIO $HOLD_SCENARIO]
 
-############################################################
-# Power reporting control
-#
-# Default:
-#   Report power for both SS/setup and FF/hold scenarios.
-#
-# Optional activity input:
-#   export POWER_ACTIVITY_FILE=/path/to/activity.saif
-# or scenario-specific:
-#   export POWER_ACTIVITY_FUNC_SLOW_MAX=/path/to/slow.saif
-#   export POWER_ACTIVITY_FUNC_FAST_MIN=/path/to/fast.saif
-#
-# Supported activity readers are tried safely, so the STA flow
-# still completes if activity annotation is not available.
-############################################################
-
 set RUN_POWER_REPORTS 1
 set POWER_SCENARIOS [list $SETUP_SCENARIO $HOLD_SCENARIO]
 set POWER_SIGNIFICANT_DIGITS 3
 
-############################################################
-# Timing report control
-#
-# Main detailed timing reports are NOT filtered by slack, so
-# they are generated even when there are no violations.
-# Separate *_violators.rpt files keep the violation-only view.
-############################################################
-
 set TIMING_MAX_PATHS 200
 set TIMING_NWORST 10
 set TIMING_SIGNIFICANT_DIGITS 4
-# Use a very large slack threshold for top-path reports to override
-# any PrimeTime/site default that may otherwise inject -slack_lesser_than 0.0.
 set TIMING_TOP_PATH_SLACK_LIMIT 999999.0
-
-############################################################
-# 1. Helper procedures
-############################################################
 
 proc safe_run {label cmd} {
     puts "INFO: $label"
@@ -203,15 +163,7 @@ proc require_file {label file} {
     puts "INFO: Found $label: $file"
 }
 
-############################################################
-# 2. PrimeTime library setup
-############################################################
-
 source ./scripts/pt_lib_setup.tcl
-
-############################################################
-# 3. Locate ICC2 handoff files
-############################################################
 
 set NETLIST ${HANDOFF_DIR}/${DESIGN_VER}.v
 require_file "Verilog netlist" $NETLIST
@@ -222,23 +174,8 @@ array unset SPEF_FILE
 foreach scen $scenarios {
     set clean [clean_scen $scen]
 
-    ########################################################
-    # SDC
-    ########################################################
-
     set SDC_FILE($scen) ${HANDOFF_DIR}/${DESIGN_VER}_${clean}.sdc
     require_file "SDC for $scen" $SDC_FILE($scen)
-
-    ########################################################
-    # SPEF
-    #
-    # ICC2 generated:
-    #   *.spef.maxTLU_125.spef      real max SPEF
-    #   *.spef.minTLU_125.spef      real min SPEF
-    #   *.spef.spef_scenario        metadata, NOT real SPEF
-    #
-    # Do NOT use glob ${DESIGN_VER}_${clean}.spef*
-    ########################################################
 
     if {$scen eq $SETUP_SCENARIO} {
         set SPEF_FILE($scen) ${HANDOFF_DIR}/${DESIGN_VER}_${clean}.spef.maxTLU_125.spef
@@ -254,10 +191,6 @@ foreach scen $scenarios {
     puts "INFO:   SDC  = $SDC_FILE($scen)"
     puts "INFO:   SPEF = $SPEF_FILE($scen)"
 }
-
-############################################################
-# 4. Read and link design
-############################################################
 
 must_run "Reading Verilog" {
     read_verilog $NETLIST
@@ -295,10 +228,6 @@ rpt ${REPORT_DIR}/design_link.rpt {
     report_design
 }
 
-############################################################
-# 5. Run setup and hold scenarios serially
-############################################################
-
 foreach scen $scenarios {
     set clean [clean_scen $scen]
     set SCEN_RPT_DIR ${REPORT_DIR}/${clean}
@@ -309,17 +238,9 @@ foreach scen $scenarios {
     puts "INFO: Running PrimeTime scenario: $scen"
     puts "============================================================"
 
-    ########################################################
-    # Reset previous scenario constraints and annotations
-    ########################################################
-
     safe_run "Reset design before $scen" {
         reset_design
     }
-
-    ########################################################
-    # Read constraints and parasitics
-    ########################################################
 
     must_run "Read SDC for $scen" {
         read_sdc -echo $SDC_FILE($scen)
@@ -337,10 +258,6 @@ foreach scen $scenarios {
         puts "INFO: Reading SPEF file: $SPEF_FILE($scen)"
         read_parasitics -format SPEF $SPEF_FILE($scen)
     }
-
-    ########################################################
-    # Constraint checks before timing update
-    ########################################################
 
     rpt ${SCEN_RPT_DIR}/check_timing_verbose.rpt {
         check_timing -verbose
@@ -362,17 +279,9 @@ foreach scen $scenarios {
         report_case_analysis
     }
 
-    ########################################################
-    # Timing update
-    ########################################################
-
     must_run "Update timing for $scen" {
         update_timing -full
     }
-
-    ########################################################
-    # Power analysis and reports
-    ########################################################
 
     if {$RUN_POWER_REPORTS && [scenario_in_list $scen $POWER_SCENARIOS]} {
         set ACTIVITY_FILE [get_power_activity_file $scen]
@@ -440,10 +349,6 @@ foreach scen $scenarios {
         puts "INFO: Power reports disabled or skipped for scenario $scen"
     }
 
-    ########################################################
-    # Parasitic annotation check
-    ########################################################
-
     rpt ${SCEN_RPT_DIR}/report_annotated_parasitics.rpt {
         report_annotated_parasitics -check \
             -internal_nets \
@@ -458,10 +363,6 @@ foreach scen $scenarios {
             -list_not_annotated \
             -max_nets 50
     }
-
-    ########################################################
-    # Analysis coverage
-    ########################################################
 
     rpt ${SCEN_RPT_DIR}/report_analysis_coverage.rpt {
         report_analysis_coverage
@@ -491,10 +392,6 @@ foreach scen $scenarios {
         catch {report_analysis_coverage -status_details untested -check clock_gating_hold}
     }
 
-    ########################################################
-    # Summary timing reports
-    ########################################################
-
     rpt ${SCEN_RPT_DIR}/report_global_timing.rpt {
         report_global_timing
     }
@@ -519,21 +416,7 @@ foreach scen $scenarios {
         catch {report_constraints -min_pulse_width -all_violators}
     }
 
-    ########################################################
-    # Detailed setup/hold timing reports
-    #
-    # Important:
-    #   The top-path reports below intentionally do NOT use
-    #   -slack_lesser_than 0.0. They therefore print the worst
-    #   setup/hold paths even when timing is clean.
-    #
-    #   The *_violators.rpt reports keep the violation-only view.
-    ########################################################
-
     if {$scen eq $SETUP_SCENARIO} {
-        ####################################################
-        # Setup / max-delay reports for slow_max corner
-        ####################################################
 
         rpt ${SCEN_RPT_DIR}/timing_setup_max_top_paths.rpt {
             puts "===== Detailed setup timing: worst max-delay paths ====="
@@ -672,9 +555,6 @@ foreach scen $scenarios {
     }
 
     if {$scen eq $HOLD_SCENARIO} {
-        ####################################################
-        # Hold / min-delay reports for fast_min corner
-        ####################################################
 
         rpt ${SCEN_RPT_DIR}/timing_hold_min_top_paths.rpt {
             puts "===== Detailed hold timing: worst min-delay paths ====="
@@ -812,10 +692,6 @@ foreach scen $scenarios {
         }
     }
 
-    ########################################################
-    # Optional debug reports
-    ########################################################
-
     rpt ${SCEN_RPT_DIR}/report_disable_timing.rpt {
         catch {report_disable_timing}
     }
@@ -829,10 +705,6 @@ foreach scen $scenarios {
     }
 }
 
-############################################################
-# 6. Save PrimeTime session
-############################################################
-
 safe_run "Removing old PrimeTime session directory" {
     if {[file exists $SESSION_DIR]} {
         file delete -force $SESSION_DIR
@@ -842,10 +714,6 @@ safe_run "Removing old PrimeTime session directory" {
 safe_run "Saving PrimeTime session" {
     save_session $SESSION_DIR
 }
-
-############################################################
-# 7. Final summary and quit
-############################################################
 
 rpt ${REPORT_DIR}/pt_run_summary.rpt {
     puts "===== PrimeTime STA completed ====="
@@ -864,4 +732,3 @@ rpt ${REPORT_DIR}/pt_run_summary.rpt {
 
 print_message_info
 quit
-

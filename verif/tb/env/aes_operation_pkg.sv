@@ -1,3 +1,9 @@
+//------------------------------------------------------------------------------
+// File        : aes_operation_pkg.sv
+// Description : SystemVerilog verification package for the AES operation testbench.
+//               Defines operation transactions, constrained stimulus, driver sequencing, monitor capture, DPI reference comparison, scoreboard reporting, and coverage.
+//------------------------------------------------------------------------------
+
 package aes_operation_pkg;
 
     import "DPI-C" function void aes_operation_ref_model(
@@ -61,7 +67,7 @@ package aes_operation_pkg;
             vif.drv_cb.valid_in <= 0;
             forever begin
                 `ifdef AES_SCA
-                // DO NOT MODIFY AES_SCA PATH
+
                 aes_operation_transaction#(MODE) trans_A, trans_B;
                 gen2drv.get(trans_A);
                 gen2drv.get(trans_B);
@@ -94,11 +100,7 @@ package aes_operation_pkg;
                 wait(vif.mon_cb.valid_out == 1'b0);
 
                 `else
-                // Revised non-AES_SCA path only.
-                // Drive one complete transaction as MODE/32 little-endian key words.
-                // Data is valid only for the first 4 cycles.
-                // valid_in is deasserted immediately after the final streamed word,
-                // avoiding the extra duplicate valid cycle from the old driver.
+
                 aes_operation_transaction#(MODE) trans;
                 gen2drv.get(trans);
 
@@ -114,8 +116,6 @@ package aes_operation_pkg;
                     end
                 end
 
-                // Deassert on the next driver clocking event; do not present another
-                // valid data/key word beyond the intended stream length.
                 @ (vif.drv_cb);
                 vif.drv_cb.valid_in <= 1'b0;
                 vif.drv_cb.key_in   <= 32'd0;
@@ -285,11 +285,10 @@ package aes_operation_pkg;
                 wide_key = 0;
                 wide_key[MODE-1:0] = trans.key;
 
-                // C model untouched.
                 aes_operation_ref_model(MODE, wide_key, trans.plain_text, expected_cipher);
 
                 `ifdef AES_SCA
-                    // DO NOT MODIFY AES_SCA PATH
+
                     cycle_num = ((transaction_count - 1) / 2) + 1;
                     block_id  = (transaction_count % 2 != 0) ? "A" : "B";
 
@@ -319,7 +318,7 @@ package aes_operation_pkg;
             $display("      AES Operation %0d VERIFICATION REPORT", MODE);
             $display("========================================");
             `ifdef AES_SCA
-                // DO NOT MODIFY AES_SCA PATH
+
                 $display(" Total Transactions : %0d", transaction_count);
                 $display(" Total Core Cycles  : %0d", transaction_count / 2);
             `else
@@ -336,3 +335,4 @@ package aes_operation_pkg;
     endclass
 
 endpackage
+

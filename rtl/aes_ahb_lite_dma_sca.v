@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module: aes_ahb_lite_dma_sca
+// Description: AHB-Lite memory-mapped wrapper for the side-channel-aware AES-CTR datapath.
+//              Provides control/status registers, key/nonce/TRNG storage, plaintext and ciphertext FIFOs, DMA request generation, burst tracking, and interrupt status handling.
+// -----------------------------------------------------------------------------
 module aes_ahb_lite_dma_sca #(
     parameter MODE        = 128,
     parameter FIFO_DEPTH  = 8,
@@ -29,9 +34,6 @@ module aes_ahb_lite_dma_sca #(
     localparam FIFO_AW  = $clog2(FIFO_DEPTH);
     localparam KEY_WORDS = MODE / 32;
 
-    // ------------------------------------------------------------
-    // Address constants
-    // ------------------------------------------------------------
     localparam [7:0] A_CTRL        = 8'h00;
     localparam [7:0] A_STATUS      = 8'h04;
     localparam [7:0] A_PTDATA      = 8'h08;
@@ -66,9 +68,6 @@ module aes_ahb_lite_dma_sca #(
     localparam [FIFO_AW:0] FIFO_DEPTH_COUNT = FIFO_DEPTH;
     localparam [FIFO_AW:0] BURST_WORDS      = 8;
 
-    // ------------------------------------------------------------
-    // Sticky status bit indexes
-    // ------------------------------------------------------------
     localparam ST_DONE             = 1;
     localparam ST_PT_OVERFLOW      = 7;
     localparam ST_CT_UNDERFLOW     = 8;
@@ -76,17 +75,6 @@ module aes_ahb_lite_dma_sca #(
     localparam ST_COUNTER_OVERFLOW = 12;
     localparam ST_ILLEGAL_ACCESS   = 13;
 
-    // ------------------------------------------------------------
-    // AHB-Lite response FSM
-    //
-    // Strict protocol behavior:
-    //   * writes complete with zero wait states
-    //   * legal reads use a registered HRDATA path and therefore insert
-    //     one wait state before completing with OKAY
-    //   * illegal transfers return the required two-cycle ERROR response:
-    //       cycle 1: HRESP=1, HREADYOUT=0
-    //       cycle 2: HRESP=1, HREADYOUT=1
-    // ------------------------------------------------------------
     localparam [1:0] RESP_OKAY      = 2'd0;
     localparam [1:0] RESP_READ_WAIT = 2'd1;
     localparam [1:0] RESP_ERR_FIRST = 2'd2;
@@ -103,12 +91,6 @@ module aes_ahb_lite_dma_sca #(
     wire hready_accept = HREADY & HREADYOUT;
     wire ahb_addr_phase = HSEL & hready_accept & HTRANS[1];
 
-    // HMASTLOCK, HBURST, and HPROT are accepted as AHB-Lite signals.
-    // This slave does not need locked-transfer or protection behavior internally.
-
-    // ------------------------------------------------------------
-    // Legal access decode in address phase
-    // ------------------------------------------------------------
     wire addr_word_aligned = (HADDR[1:0] == 2'b00);
     wire size_word         = (HSIZE == 3'b010);
 
@@ -161,13 +143,6 @@ module aes_ahb_lite_dma_sca #(
     wire read_addr_accept    = ahb_addr_phase & ~HWRITE &  ahb_addr_legal;
     wire illegal_addr_accept = ahb_addr_phase &             ~ahb_addr_legal;
 
-    // ------------------------------------------------------------
-    // AHB-Lite address/control phase capture
-    //
-    // Used for write data-phase pairing:
-    //   ahb_addr_d / ahb_write_d = previous accepted address/control phase
-    //   HWDATA                   = current data phase
-    // ------------------------------------------------------------
     reg       ahb_write_d;
     reg       ahb_valid_d;
     reg       ahb_legal_d;
@@ -196,9 +171,6 @@ module aes_ahb_lite_dma_sca #(
 
     wire [31:0] ahb_wdata_phase = HWDATA;
 
-    // ------------------------------------------------------------
-    // Configuration registers
-    // ------------------------------------------------------------
     reg        ctrl_enable;
     reg        ctrl_auto_start;
     reg        ctrl_dec_mode;
@@ -233,9 +205,6 @@ module aes_ahb_lite_dma_sca #(
         (ahb_addr_d == A_KEY4) || (ahb_addr_d == A_KEY5) ||
         (ahb_addr_d == A_KEY6) || (ahb_addr_d == A_KEY7);
 
-    // ------------------------------------------------------------
-    // Xorshift helper for working TRNG seed evolution
-    // ------------------------------------------------------------
     function [31:0] xs32;
         input [31:0] in_val;
         reg [31:0] t1;
@@ -260,9 +229,6 @@ module aes_ahb_lite_dma_sca #(
         end
     endfunction
 
-    // ------------------------------------------------------------
-    // FIFOs
-    // ------------------------------------------------------------
     wire [31:0] pt_dout;
     wire [31:0] ct_dout;
 
@@ -282,17 +248,12 @@ module aes_ahb_lite_dma_sca #(
     wire pt_wr_from_ahb   = ahb_wr & (ahb_addr_d == A_PTDATA) & ~pt_full;
     wire pt_wr_overflow   = ahb_wr & (ahb_addr_d == A_PTDATA) &  pt_full;
 
-    // CTDATA read data is copied into HRDATA on address acceptance, and the
-    // FIFO can then advance immediately. The AHB read itself still completes
-    // later, after RESP_READ_WAIT.
     wire ct_rd_from_ahb   = read_addr_accept & (addr8 == A_CTDATA) & ~ct_empty;
     wire ct_rd_underflow  = read_addr_accept & (addr8 == A_CTDATA) &  ct_empty;
 
     wire core_valid_out;
     wire [31:0] core_ct_out;
 
-    // Keep this tied to core_valid_out. In this design the PT FIFO word is
-    // consumed when the CTR core produces the corresponding ciphertext word.
     wire pt_rd_to_core    = core_valid_out;
     wire ct_wr_from_core  = core_valid_out & ~ct_full;
 
@@ -328,14 +289,9 @@ module aes_ahb_lite_dma_sca #(
         .level (ct_level)
     );
 
-    // These DMA request signals now match the stream-driver contract:
-    // one assertion means one complete 8-word burst is safe.
     assign dma_pt_req = (pt_free  >= BURST_WORDS);
     assign dma_ct_req = (ct_level >= BURST_WORDS);
 
-    // ------------------------------------------------------------
-    // Job/core control
-    // ------------------------------------------------------------
     reg job_active;
     reg core_active;
     reg [2:0] out_word_count;
@@ -395,9 +351,6 @@ module aes_ahb_lite_dma_sca #(
         ((nonce_work_reg[31:0] == 32'hFFFF_FFFF) ||
          (nonce_work_reg[31:0] == 32'hFFFF_FFFE));
 
-    // ------------------------------------------------------------
-    // Sticky status / IRQ
-    // ------------------------------------------------------------
     reg [13:0] sticky_status;
 
     assign irq = ctrl_irq_en &
@@ -408,9 +361,6 @@ module aes_ahb_lite_dma_sca #(
                   sticky_status[ST_BURST_ZERO]       |
                   sticky_status[ST_ILLEGAL_ACCESS]);
 
-    // ------------------------------------------------------------
-    // Read data source words
-    // ------------------------------------------------------------
     wire [31:0] ctrl_word = {
         23'd0,
         1'b0,
@@ -440,9 +390,6 @@ module aes_ahb_lite_dma_sca #(
         core_active
     };
 
-    // ------------------------------------------------------------
-    // Registered read data and response timing
-    // ------------------------------------------------------------
     always @(posedge HCLK or negedge HRESETn) begin
         if (!HRESETn) begin
             resp_state <= RESP_OKAY;
@@ -492,8 +439,7 @@ module aes_ahb_lite_dma_sca #(
                 end
 
                 RESP_READ_WAIT: begin
-                    // HRDATA is already registered and stable. Return to OKAY;
-                    // HREADYOUT becomes HIGH for the final read data cycle.
+
                     resp_state <= RESP_OKAY;
                 end
 
@@ -515,9 +461,6 @@ module aes_ahb_lite_dma_sca #(
         end
     end
 
-    // ------------------------------------------------------------
-    // Main register/control update
-    // ------------------------------------------------------------
     integer rst_i;
 
     always @(posedge HCLK or negedge HRESETn) begin
@@ -666,7 +609,11 @@ module aes_ahb_lite_dma_sca #(
 
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: sync_fifo_fwft_dma
+// Description: Synchronous first-word-fall-through FIFO used for DMA stream buffering.
+//              Tracks push/pop level, reports empty/full status, and supports synchronous clearing after reset.
+// -----------------------------------------------------------------------------
 module sync_fifo_fwft_dma #(
     parameter WIDTH = 32,
     parameter DEPTH = 8
@@ -734,3 +681,4 @@ module sync_fifo_fwft_dma #(
     end
 
 endmodule
+

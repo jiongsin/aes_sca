@@ -1,3 +1,9 @@
+//------------------------------------------------------------------------------
+// File        : aes_ctr_tb.sv
+// Description : Top-level SystemVerilog testbench for the AES CTR block.
+//               Selects the implementation and key size, instantiates the DUT through the AES CTR interface, and runs the driver, monitor, and scoreboard environment.
+//------------------------------------------------------------------------------
+
 `ifdef AES_CTR
 
 module aes_ctr_tb;
@@ -133,3 +139,4 @@ module aes_ctr_tb;
 endmodule
 
 `endif
+

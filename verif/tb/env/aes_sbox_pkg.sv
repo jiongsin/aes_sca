@@ -1,3 +1,9 @@
+//------------------------------------------------------------------------------
+// File        : aes_sbox_pkg.sv
+// Description : SystemVerilog verification package for the AES S-box testbench.
+//               Defines S-box transactions, driver and monitor components, DPI reference-model comparison, scoreboard reporting, and SCA masking support.
+//------------------------------------------------------------------------------
+
 package aes_sbox_pkg;
 
     import "DPI-C" function bit [7:0] aes_sbox_ref_model(
@@ -7,12 +13,12 @@ package aes_sbox_pkg;
     class aes_sbox_transaction;
         rand bit [7:0] data_in;
         bit [7:0] data_out;
-        
+
         `ifdef AES_SCA
         bit [7:0] mask;
         bit [35:0] random_bits;
         `endif
-        
+
         function new();
         endfunction
     endclass
@@ -37,14 +43,14 @@ package aes_sbox_pkg;
                 `ifdef AES_SCA
                     if (!std::randomize(trans.mask)) $display("Randomization failed");
                     if (!std::randomize(trans.random_bits)) $display("Randomization failed");
-                    
+
                     vif.drv_cb.data_in_0 <= trans.data_in ^ trans.mask;
                     vif.drv_cb.data_in_1 <= trans.mask;
                     vif.drv_cb.random_bits <= trans.random_bits;
                 `else
                     vif.drv_cb.data_in <= trans.data_in;
                 `endif
-                
+
                 ->next_item;
             end
         endtask
@@ -67,11 +73,11 @@ package aes_sbox_pkg;
                 @(vif.mon_cb);
                 begin
                     automatic aes_sbox_transaction trans = new();
-                    
+
                     `ifdef AES_SCA
                         trans.data_in = vif.mon_cb.data_in_0 ^ vif.mon_cb.data_in_1;
                         trans.random_bits = vif.mon_cb.random_bits;
-                        
+
                         fork
                             begin
                                 automatic aes_sbox_transaction t_local = trans;
@@ -110,11 +116,11 @@ package aes_sbox_pkg;
                 expected_out = aes_sbox_ref_model(trans.data_in);
 
                 if (trans.data_out === expected_out) begin
-                    $display("[%0t] [PASS] Trans #%0d | In: %h | Out: %h", 
+                    $display("[%0t] [PASS] Trans #%0d | In: %h | Out: %h",
                              $time, transaction_count, trans.data_in, trans.data_out);
                 end else begin
                     mismatch_count++;
-                    $error("[%0t] [FAIL] Trans #%0d Mismatch! | In: %h | Out: %h | Expected: %h", 
+                    $error("[%0t] [FAIL] Trans #%0d Mismatch! | In: %h | Out: %h | Expected: %h",
                            $time, transaction_count, trans.data_in, trans.data_out, expected_out);
                 end
 
@@ -131,10 +137,11 @@ package aes_sbox_pkg;
             $display("=============================================");
             $display(" Total Transactions : %0d", transaction_count);
             $display(" Mismatches         : %0d", mismatch_count);
-            $display(" TEST STATUS        : %s", 
+            $display(" TEST STATUS        : %s",
                     (mismatch_count == 0 && transaction_count == 256) ? "PASSED" : "FAILED");
             $display("=============================================\n");
         endfunction
     endclass
 
 endpackage
+

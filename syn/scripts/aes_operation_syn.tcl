@@ -1,28 +1,7 @@
-# =====================================================================
-# SCA Synthesis Script with Whole-Design Clock Gating
-#
-# Fixes GTECH_XOR2 issue:
-#   - Do NOT set_dont_touch whole SCA designs before compile
-#   - Do NOT set_dont_touch dom_and_sca cells before compile
-#   - Do NOT broadly set_dont_touch *_0* / *_1* nets
-#   - Preserve hierarchy using set_ungroup false
-#   - Preserve boundaries using set_boundary_optimization false
-#
-# period is defined inside:
-#   ./scripts/constraints/aes_operation_cons.tcl
-# =====================================================================
-
-
-# =====================================================================
-# 0. SETUP
-# =====================================================================
+# Synthesis script for the AES operation core.
+# Reads the selected AES operation and S-box RTL, applies timing and SCA preservation constraints, performs clock-gated synthesis, checks mapping quality, and writes reports/netlists.
 
 source ./scripts/dc_lib_setup.tcl
-
-
-# =====================================================================
-# 1. SETUP & READ
-# =====================================================================
 
 set mode $env(mode)
 set version $env(version)
@@ -54,14 +33,6 @@ if {[check_design] == 0} {
     exit 1
 }
 
-
-# =====================================================================
-# 2. APPLY CONSTRAINTS
-# =====================================================================
-# period is defined inside this file.
-# Therefore run_name must be set AFTER this source command.
-# =====================================================================
-
 source -echo -verbose ./scripts/constraints/aes_operation_cons.tcl
 
 set run_name "${rtl_top}_MODE${mode}_${period}ns"
@@ -74,11 +45,6 @@ echo "Version  : ${version}"
 echo "Period   : ${period} ns"
 echo "Run name : ${run_name}"
 echo "============================================================"
-
-
-# =====================================================================
-# 3. SAFE HELPER PROCEDURES
-# =====================================================================
 
 proc safe_set_ungroup_false {pattern} {
     set objs [get_designs $pattern -quiet]
@@ -119,11 +85,6 @@ proc safe_report_cells {pattern rpt_name} {
     }
 }
 
-
-# =====================================================================
-# 4. SCA PRESERVATION CONSTRAINTS
-# =====================================================================
-
 echo "Applying Side Channel Security Constraints..."
 
 if { $version == "sca" } {
@@ -132,14 +93,8 @@ if { $version == "sca" } {
     echo "SCA MODE: WHOLE-DESIGN CLOCK GATING ENABLED"
     echo "============================================================"
 
-    # -----------------------------------------------------------------
-    # 4.1 Disable optimizations that can break masking
-    # -----------------------------------------------------------------
-
     set_app_var compile_enable_constant_propagation_with_no_boundary_opt false
 
-    # Disable register merging and retiming.
-    # Do NOT set_dont_touch all registers, because that blocks clock gating.
     set_optimize_registers false
     set_app_var compile_enable_register_merging false
 
@@ -152,17 +107,6 @@ if { $version == "sca" } {
         set_register_merging $all_regs false
         set_dont_retime $all_regs true
     }
-
-    # -----------------------------------------------------------------
-    # 4.2 Preserve SCA hierarchy without freezing GTECH
-    # -----------------------------------------------------------------
-    # IMPORTANT:
-    # Do NOT use set_dont_touch on these designs before compile.
-    # set_dont_touch can preserve GTECH_XOR2/GTECH_AND2 etc.
-    # Use only:
-    #   set_ungroup false
-    #   set_boundary_optimization false
-    # -----------------------------------------------------------------
 
     safe_set_ungroup_false "*aes_operation_sca*"
     safe_set_ungroup_false "*aes_key_expansion_sca*"
@@ -185,13 +129,6 @@ if { $version == "sca" } {
     safe_set_boundary_opt_false "*gf4_multiplier_sca*"
     safe_set_boundary_opt_false "*gf2_multiplier_sca*"
     safe_set_boundary_opt_false "*dom_and_sca*"
-
-    # -----------------------------------------------------------------
-    # 4.3 Protect only selected security nets
-    # -----------------------------------------------------------------
-    # Keep this list specific. Do NOT protect broad *_0* / *_1* patterns.
-    # Broad dont_touch can prevent technology mapping.
-    # -----------------------------------------------------------------
 
     safe_dont_touch_nets "*random_bits*"
 
@@ -220,8 +157,6 @@ if { $version == "sca" } {
     safe_dont_touch_nets "*key_sbox_out_0*"
     safe_dont_touch_nets "*key_sbox_out_1*"
 
-    # DOM sensitive combinational nets.
-    # These are nets only, not whole cells/designs.
     safe_dont_touch_nets "*cross_0_comb*"
     safe_dont_touch_nets "*cross_1_comb*"
     safe_dont_touch_nets "*cross_*_comb*"
@@ -239,20 +174,10 @@ if { $version == "sca" } {
     set_register_merging [all_registers] true
 }
 
-
-# =====================================================================
-# 5. PHYSICAL / TOPOGRAPHICAL SETUP
-# =====================================================================
-
 if {[shell_is_in_topographical_mode]} {
     set_aspect_ratio 1
     set_utilization 0.7
 }
-
-
-# =====================================================================
-# 6. SAIF READ
-# =====================================================================
 
 set saif_path "../verif/sim/${run_name}/${run_name}.saif"
 
@@ -271,11 +196,6 @@ if {[file exists $saif_path]} {
     }
 }
 
-
-# =====================================================================
-# 7. OPTIMIZATION OPTIONS
-# =====================================================================
-
 set_cost_priority -delay
 set_fix_hold [get_clocks clk]
 
@@ -292,8 +212,6 @@ if { $version == "sca" } {
     set_dynamic_optimization true
     set_leakage_optimization true
 
-    # Whole-design clock gating.
-    # minimum_bitwidth 1 lets DC consider small register groups too.
     set_clock_gating_style \
         -minimum_bitwidth 1 \
         -positive_edge_logic {integrated} \
@@ -307,18 +225,8 @@ if { $version == "sca" } {
     set_leakage_optimization true
 }
 
-
-# =====================================================================
-# 8. PRE-COMPILE CHECKS
-# =====================================================================
-
 check_design
 check_timing
-
-
-# =====================================================================
-# 9. COMPILE
-# =====================================================================
 
 echo "============================================================"
 echo "Starting compile for ${run_name}"
@@ -326,8 +234,6 @@ echo "============================================================"
 
 if { $version == "sca" } {
 
-    # SCA compile with whole-design clock gating.
-    # No design-level dont_touch should be active on SCA modules.
     compile_ultra -gate_clock
 
 } else {
@@ -335,11 +241,6 @@ if { $version == "sca" } {
     compile_ultra
 
 }
-
-
-# =====================================================================
-# 10. INCREMENTAL TIMING REPAIR
-# =====================================================================
 
 set worst_path [get_timing_paths -delay_type max -nworst 1]
 
@@ -360,21 +261,8 @@ if {[sizeof_collection $worst_path] > 0} {
     }
 }
 
-
-# =====================================================================
-# 11. POST-COMPILE CHECKS
-# =====================================================================
-
 check_design
 check_timing
-
-
-# =====================================================================
-# 12. CHECK FOR UNMAPPED / GTECH CELLS
-# =====================================================================
-# This is the check that should catch your GTECH_XOR2 problem before
-# writing the netlist.
-# =====================================================================
 
 echo "============================================================"
 echo "Checking for unmapped / GTECH cells"
@@ -389,7 +277,6 @@ if {[sizeof_collection $gtech_cells] > 0} {
     exit 1
 }
 
-# Some DC versions support is_unmapped. If yours does not, comment this block.
 set unmapped_cells [get_cells -hierarchical -filter "is_unmapped == true" -quiet]
 
 if {[sizeof_collection $unmapped_cells] > 0} {
@@ -400,18 +287,8 @@ if {[sizeof_collection $unmapped_cells] > 0} {
 
 echo "No GTECH or unmapped cells found."
 
-
-# =====================================================================
-# 13. OUTPUT DIRECTORIES
-# =====================================================================
-
 file mkdir ./results/${run_name}
 file mkdir ./results/${run_name}/reports
-
-
-# =====================================================================
-# 14. REPORTS
-# =====================================================================
 
 report_area -physical \
     > ./results/${run_name}/reports/area.rpt
@@ -442,11 +319,6 @@ report_reference \
 
 report_compile_options \
     > ./results/${run_name}/reports/compile_options.rpt
-
-
-# =====================================================================
-# 15. SCA DEBUG REPORTS
-# =====================================================================
 
 if { $version == "sca" } {
 
@@ -496,11 +368,6 @@ if { $version == "sca" } {
     }
 }
 
-
-# =====================================================================
-# 16. WRITE OUTPUTS
-# =====================================================================
-
 write_file -format verilog -hierarchy \
     -out ./results/${run_name}/${run_name}_ntl.v
 
@@ -510,14 +377,6 @@ write_file -format ddc -hierarchy \
 write_sdc ./results/${run_name}/${run_name}.sdc
 
 write_sdf ./results/${run_name}/${run_name}.sdf
-
-
-# =====================================================================
-# 17. FINAL GREP-LIKE NETLIST WARNING
-# =====================================================================
-# DC object check above should catch GTECH before this point.
-# This reminder is printed for your simulation flow.
-# =====================================================================
 
 echo "============================================================"
 echo "Finished Synthesis for ${run_name}"

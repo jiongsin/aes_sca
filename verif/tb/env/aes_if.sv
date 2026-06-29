@@ -1,3 +1,9 @@
+//------------------------------------------------------------------------------
+// File        : aes_if.sv
+// Description : SystemVerilog interface definitions for the AES verification environment.
+//               Provides typed DUT/testbench connections and clocking blocks for the S-box, operation, PRNG, CTR, and AHB-Lite DMA verification components.
+//------------------------------------------------------------------------------
+
 interface aes_sbox_if(input logic clk);
     `ifdef AES_SCA
         logic [7:0] data_in_0;
@@ -9,7 +15,7 @@ interface aes_sbox_if(input logic clk);
         logic [7:0] data_in;
         logic [7:0] data_out;
     `endif
-    
+
     clocking drv_cb @(posedge clk);
         default output #2ns;
         `ifdef AES_SCA
@@ -20,7 +26,7 @@ interface aes_sbox_if(input logic clk);
             output data_in;
         `endif
     endclocking
-    
+
     clocking mon_cb @(posedge clk);
         default input #2ns;
         `ifdef AES_SCA
@@ -35,7 +41,6 @@ interface aes_sbox_if(input logic clk);
         `endif
     endclocking
 endinterface
-
 
 interface aes_operation_if #(parameter MODE = 128) (input logic clk);
     logic rst_n;
@@ -61,11 +66,9 @@ interface aes_operation_if #(parameter MODE = 128) (input logic clk);
     endclocking
 endinterface
 
-
 interface aes_prng_if (input logic clk);
     logic rst_n;
 
-    // revised: full TRNG seed
     logic [159:0] trng_in;
     logic trng_valid;
     logic [143:0] random_out;
@@ -81,7 +84,6 @@ interface aes_prng_if (input logic clk);
         input rst_n, trng_in, trng_valid, random_out;
     endclocking
 endinterface
-
 
 interface aes_ctr_if #(parameter MODE = 128) (input logic clk);
     logic rst_n;
@@ -106,7 +108,6 @@ interface aes_ctr_if #(parameter MODE = 128) (input logic clk);
         input start, valid_in, `ifdef AES_SCA trng_in, `endif key_in, nonce_in, pt_in, stop, valid_out, ct_out;
     endclocking
 endinterface
-
 
 interface aes_ahb_lite_dma_if(input logic HCLK);
     logic        HRESETn;
@@ -135,3 +136,4 @@ interface aes_ahb_lite_dma_if(input logic HCLK);
         input dma_pt_req, dma_ct_req, irq;
     endclocking
 endinterface
+

@@ -1,3 +1,10 @@
+
+//------------------------------------------------------------------------------
+// File        : aes_model.cpp
+// Description : DPI-C golden reference model used by the SystemVerilog AES verification environment.
+//               Implements AES S-box lookup, key expansion, block encryption, operation-level reference output, and CTR-mode reference ciphertext generation.
+//------------------------------------------------------------------------------
+
 #include <iostream>
 #include <stdint.h>
 #include <string.h>
@@ -47,9 +54,9 @@ void shift_rows(uint8_t* state) {
 
 void aes_encrypt_core(int mode, const uint8_t* key_in, const uint8_t* data_in, uint8_t* data_out) {
     uint8_t state[16];
-    uint8_t round_key[240]; 
-    
-    int Nk = mode / 32; 
+    uint8_t round_key[240];
+
+    int Nk = mode / 32;
     int Nr = (Nk == 8) ? 14 : (Nk == 6) ? 12 : 10;
 
     for (int i = 0; i < 16; i++) {
@@ -63,7 +70,7 @@ void aes_encrypt_core(int mode, const uint8_t* key_in, const uint8_t* data_in, u
     for (int i = Nk; i < 4 * (Nr + 1); i++) {
         uint8_t temp[4];
         for (int j = 0; j < 4; j++) temp[j] = round_key[(i-1)*4 + j];
-        
+
         if (i % Nk == 0) {
             uint8_t k = temp[0];
             temp[0] = sbox[temp[1]] ^ Rcon[i/Nk];
@@ -102,8 +109,8 @@ extern "C" void aes_operation_ref_model(int mode, const uint32_t* key_in, const 
     uint8_t state[16];
     uint8_t key[32];
     uint8_t out[16];
-    
-    int Nk = mode / 32; 
+
+    int Nk = mode / 32;
 
     for (int i = 0; i < 4; i++) {
         state[i*4+0] = (data_in[i] >> 0)  & 0xFF;
@@ -150,13 +157,13 @@ extern "C" void aes_ctr_ref_model(int mode, int num_blocks, const uint32_t* key_
         nonce1[i*4+2] = (nonce_in[i] >> 16) & 0xFF;
         nonce1[i*4+3] = (nonce_in[i] >> 24) & 0xFF;
     }
-    
+
     for (int i = 0; i < 16; i++) {
         nonce2[i] = nonce1[i];
     }
-    
+
     uint32_t nonce_lsb = nonce_in[0];
-    nonce_lsb += 1; 
+    nonce_lsb += 1;
     nonce2[0] = (nonce_lsb >> 0)  & 0xFF;
     nonce2[1] = (nonce_lsb >> 8)  & 0xFF;
     nonce2[2] = (nonce_lsb >> 16) & 0xFF;

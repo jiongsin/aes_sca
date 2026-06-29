@@ -1,26 +1,5 @@
-############################################################
-# ICC2 Routing + Post-Route Optimization Script
-# DOM-based Masked AES Accelerator
-#
-# Input block:
-#   ${ntl_ver}_after_cts
-#
-# Output block:
-#   ${ntl_ver}_after_route
-#
-# Report numbering starts at 41 because CTS ended at:
-#   40_cts_stage_summary.rpt
-#
-# Notes:
-# - Starts from legal post-CTS block.
-# - Does NOT read Verilog again.
-# - Does NOT redo floorplan/place/CTS.
-# - Routes signal nets using route_auto.
-# - Uses timing-driven routing.
-# - Enables crosstalk prevention during track assignment only.
-# - Keeps CCD/power optimization disabled by default for DOM/SCA stability.
-# - Inserts fillers only near the end, after route_opt.
-############################################################
+# ICC2 routing and post-route optimization script for the AES PNR flow.
+# Opens the post-CTS AES block, applies routing/security options, performs signal routing and route optimization, checks timing/DRC, inserts fillers, and saves the routed block.
 
 source ./scripts/icc2_lib_setup.tcl
 
@@ -28,44 +7,26 @@ set mode    $env(MODE)
 set version $env(VER)
 set ntl_ver $env(DESIGN_VER)
 
-############################################################
-# 0. User switches
-############################################################
-
 set INPUT_BLOCK  ${ntl_ver}_after_cts
 set OUTPUT_BLOCK ${ntl_ver}_after_route
 
 set USE_DOM_SECURITY_RULES 1
 
-# For DOM/SCA, keep post-route CCD disabled first.
-# Enable only if timing cannot close and after reviewing share/domain impact.
 set USE_POST_ROUTE_CCD 0
 
-# Power optimization may alter implementation structure.
-# Keep disabled first for DOM/SCA stability.
 set USE_POST_ROUTE_POWER_OPT 0
 
-# Optional antenna rule file.
 set USE_ANTENNA_RULES 1
 set ANTENNA_RULE_FILE /data/synopsys/lib/saed32nm/lib/tech/milkyway/saed32nm_ant_1p9m.tcl
 
-# Final filler insertion after routing optimization.
 set INSERT_FILLERS_AFTER_ROUTE 1
 set FILLER_CELLS {saed32hvt/SHFILL*}
-
-############################################################
-# 1. Directory setup
-############################################################
 
 set OUTPUT_DIR ./results/${ntl_ver}
 set REPORT_DIR ${OUTPUT_DIR}/reports
 
 file mkdir $OUTPUT_DIR
 file mkdir $REPORT_DIR
-
-############################################################
-# 2. Helper procedures
-############################################################
 
 proc safe_set_app_option {opt val} {
     if {[catch {set_app_options -name $opt -value $val} msg]} {
@@ -109,10 +70,6 @@ proc remove_all_fillers {} {
     puts "INFO: Filler-like cells after cleanup: [sizeof_collection $filler_check]"
 }
 
-############################################################
-# 3. Open post-CTS block
-############################################################
-
 puts "INFO: Opening input block: $INPUT_BLOCK"
 
 open_block $INPUT_BLOCK
@@ -124,10 +81,6 @@ redirect -file ${REPORT_DIR}/41_opened_route_block_summary.rpt {
     report_design -summary
     report_utilization
 }
-
-############################################################
-# 4. MCMM scenario check
-############################################################
 
 set slow_scen [get_scenarios -quiet func.slow_max]
 set fast_scen [get_scenarios -quiet func.fast_min]
@@ -161,10 +114,6 @@ if {[sizeof_collection $fast_scen] > 0} {
 redirect -file ${REPORT_DIR}/42_route_mcmm_scenarios.rpt {
     report_scenarios
 }
-
-############################################################
-# 5. Pre-route readiness checks
-############################################################
 
 redirect -file ${REPORT_DIR}/43_pre_route_check_design.rpt {
     check_design -checks pre_route_stage
@@ -238,45 +187,29 @@ redirect -file ${REPORT_DIR}/50_pre_route_drv.rpt {
     }
 }
 
-############################################################
-# 6. Routing setup
-############################################################
-
-# Verbose routing messages during setup/checking.
 safe_set_app_option route.common.verbose_level 1
 
-# Timing-driven routing.
 safe_set_app_option route.global.timing_driven true
 safe_set_app_option route.track.timing_driven true
 safe_set_app_option route.detail.timing_driven true
 
-# Crosstalk recommendation from slides:
-# Do not enable crosstalk-driven global route by default.
-# Enable crosstalk during track assignment.
 safe_set_app_option route.global.crosstalk_driven false
 safe_set_app_option route.track.crosstalk_driven true
 
-# SI analysis supports crosstalk delta delay analysis.
 safe_set_app_option time.si_enable_analysis true
 
-# Better timing correlation if supported by libraries.
 safe_set_app_option time.enable_ccs_rcv_cap true
 safe_set_app_option time.delay_calc_waveform_analysis_mode full_design
 safe_set_app_option time.enable_si_timing_windows true
 
-# Redundant-via strategy:
-# Reserve space during routing, then insert redundant vias after DRC is clean.
 safe_set_app_option route.common.post_detail_route_redundant_via_insertion off
 safe_set_app_option route.common.concurrent_redundant_via_mode reserve_space
 safe_set_app_option route.common.eco_route_concurrent_redundant_via_mode reserve_space
 
-# Improve wire/via optimization.
 safe_set_app_option route.detail.optimize_wire_via_effort_level high
 
-# Keep detailed routing from stopping too early.
 safe_set_app_option route.detail.force_max_number_iterations false
 
-# Antenna rule setup if the file exists.
 if {$USE_ANTENNA_RULES} {
     if {[file exists $ANTENNA_RULE_FILE]} {
         puts "INFO: Sourcing antenna rule file: $ANTENNA_RULE_FILE"
@@ -329,10 +262,6 @@ redirect -file ${REPORT_DIR}/51_route_setup_options.rpt {
     puts $waveform_msg
 }
 
-############################################################
-# 7. DOM/SCA pre-route structure report
-############################################################
-
 if {$USE_DOM_SECURITY_RULES} {
 
     set sbox_cells        [get_cells -hierarchical -quiet *sbox*]
@@ -380,14 +309,6 @@ if {$USE_DOM_SECURITY_RULES} {
     }
 }
 
-############################################################
-# 8. Signal routing
-############################################################
-# route_auto performs:
-#   global route
-#   track assignment
-#   detail route
-
 route_auto \
     -max_detail_route_iterations 60
 
@@ -423,10 +344,6 @@ redirect -file ${REPORT_DIR}/55_after_route_auto_timing.rpt {
     }
 }
 
-############################################################
-# 9. Incremental detail routing for DRC cleanup
-############################################################
-
 route_detail \
     -incremental true \
     -max_number_iterations 50
@@ -437,10 +354,6 @@ save_lib
 redirect -file ${REPORT_DIR}/56_after_route_detail_check_routes.rpt {
     check_routes
 }
-
-############################################################
-# 10. Post-route optimization setup
-############################################################
 
 compute_clock_latency
 
@@ -471,10 +384,6 @@ redirect -file ${REPORT_DIR}/57_route_opt_setup_options.rpt {
     puts $time_msg
 }
 
-############################################################
-# 11. Post-route optimization pass 1
-############################################################
-
 route_opt
 
 save_block -as ${ntl_ver}_after_route_opt_1
@@ -488,13 +397,6 @@ redirect -file ${REPORT_DIR}/58_after_route_opt_1_qor.rpt {
 redirect -file ${REPORT_DIR}/59_after_route_opt_1_check_routes.rpt {
     check_routes
 }
-
-############################################################
-# 12. Post-route optimization pass 2
-############################################################
-# Use path-based optimization if supported.
-# Disable soft-spacing timing optimization during ECO routing to reduce
-# route spreading and improve convergence.
 
 safe_set_app_option time.pba_optimization_mode path
 safe_set_app_option route.detail.eco_route_use_soft_spacing_for_timing_optimization false
@@ -517,10 +419,6 @@ redirect -file ${REPORT_DIR}/61_after_route_opt_2_check_routes.rpt {
     check_routes
 }
 
-############################################################
-# 13. Final incremental detail route and redundant vias
-############################################################
-
 route_detail \
     -incremental true \
     -max_number_iterations 50
@@ -529,7 +427,6 @@ redirect -file ${REPORT_DIR}/62_after_final_detail_check_routes.rpt {
     check_routes
 }
 
-# Add redundant vias only after final DRC cleanup attempt.
 catch {
     add_redundant_vias
 } rvia_msg
@@ -543,12 +440,6 @@ redirect -file ${REPORT_DIR}/63_after_redundant_vias_check_routes.rpt {
 
 save_block -as ${ntl_ver}_after_final_detail_route
 save_lib
-
-############################################################
-# 14. Final filler insertion and PG repair
-############################################################
-# Fillers were intentionally not inserted in CTS.
-# Insert them here after routing optimization is stable.
 
 if {$INSERT_FILLERS_AFTER_ROUTE} {
 
@@ -590,10 +481,6 @@ redirect -file ${REPORT_DIR}/65_final_route_pg_connectivity.rpt {
 redirect -file ${REPORT_DIR}/66_final_route_pg_drc_ignore_std_cells.rpt {
     check_pg_drc -ignore_std_cells
 }
-
-############################################################
-# 15. Final route, LVS, timing, and DRV reports
-############################################################
 
 redirect -file ${REPORT_DIR}/67_final_check_routes.rpt {
     check_routes
@@ -731,10 +618,6 @@ redirect -file ${REPORT_DIR}/72_final_route_noise.rpt {
     puts $noise_msg
 }
 
-############################################################
-# 16. DOM/SCA final route structure report
-############################################################
-
 if {$USE_DOM_SECURITY_RULES} {
     redirect -file ${REPORT_DIR}/73_dom_security_final_route.rpt {
         puts "===== DOM/SCA final route structure report ====="
@@ -758,10 +641,6 @@ if {$USE_DOM_SECURITY_RULES} {
         puts "sbox_buffer_regs       : [sizeof_collection $sbox_buffer_regs]"
     }
 }
-
-############################################################
-# 17. Final stage summary
-############################################################
 
 redirect -file ${REPORT_DIR}/74_route_stage_summary.rpt {
     puts "===== Route Stage Summary ====="
@@ -790,15 +669,7 @@ redirect -file ${REPORT_DIR}/74_route_stage_summary.rpt {
     puts "  73_dom_security_final_route.rpt"
 }
 
-############################################################
-# 18. Save final routed block
-############################################################
-
 save_block -as $OUTPUT_BLOCK
 save_lib
-
-############################################################
-# End of routing script
-############################################################
 
 # exit

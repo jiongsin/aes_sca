@@ -1,36 +1,5 @@
-
-############################################################
-# ICC2 Post-Route DRC Debug + Optional M1 PG Spacing Repair
-# DOM-based Masked AES Accelerator
-#
-# Purpose:
-#   One script to run after aes_operation_route.tcl.
-#   It first generates debug reports, then optionally fixes the observed
-#   M1-M1 diff-net spacing issue between VDD/VSS rails and signal nets.
-#   After the DRC repair, it can also run a small hold-only ECO cleanup
-#   for tiny post-repair min-delay violations.
-#
-# Observed root-cause pattern:
-#   - check_legality clean
-#   - check_lvs clean
-#   - check_pg_connectivity clean
-#   - check_routes reports M1-M1 Diff net spacing
-#   - check_pg_drc full reports M1 std-cell/rail spacing
-#   - check_pg_drc -ignore_std_cells is clean
-#
-# Default behavior:
-#   Debug/report only. Repair is disabled unless DO_M1_PG_DRC_FIX is set to 1.
-#
-# Typical usage:
-#   icc2_shell -f ./scripts/aes_operation_post_route_drc_debug_and_fix_autodetect_74.tcl
-#
-# Enable repair from shell:
-#   setenv DO_M1_PG_DRC_FIX 1
-#   icc2_shell -f ./scripts/aes_operation_post_route_drc_debug_and_fix_autodetect_74.tcl
-#
-# Or edit below:
-#   set DO_M1_PG_DRC_FIX 1
-############################################################
+# ICC2 post-route debug and repair script for the AES PNR flow.
+# Generates post-route DRC/timing/debug reports, optionally repairs power-rail spacing issues, performs focused ECO cleanup, and saves the debugged routed block.
 
 source ./scripts/icc2_lib_setup.tcl
 
@@ -38,52 +7,34 @@ set mode    $env(MODE)
 set version $env(VER)
 set ntl_ver $env(DESIGN_VER)
 
-############################################################
-# 0. User switches
-############################################################
-
 if {[info exists env(INPUT_BLOCK)]} {
     set INPUT_BLOCK $env(INPUT_BLOCK)
 } else {
     set INPUT_BLOCK ${ntl_ver}_after_route
 }
 
-# Final output block for any repair path.
-# Keep one consistent clean block name for downstream export/signoff.
 set OUTPUT_BLOCK ${ntl_ver}_after_route_clean
 
-# Debug/report controls.
-# Reports continue from aes_operation_route.tcl report numbering.
-# They are written into the same ${OUTPUT_DIR}/reports directory.
 set DEBUG_TAG post_route_drc_debug_fix
 set DO_SAVE_DEBUG_BLOCK 1
 set DEBUG_BLOCK ${ntl_ver}_after_route_drc_debug_readonly
 
-# Repair control. Default is safe/report-only.
 if {[info exists env(DO_M1_PG_DRC_FIX)]} {
     set DO_M1_PG_DRC_FIX $env(DO_M1_PG_DRC_FIX)
 } else {
     set DO_M1_PG_DRC_FIX 1
 }
 
-# Optional: if repair is enabled, also add redundant vias after cleanup.
 set DO_REDUNDANT_VIAS_AFTER_FIX 1
 
-# Optional: if repair is enabled, run a hold-only ECO cleanup after DRC is clean.
-# Default enabled because the M1 PG spacing repair may slightly perturb min-delay.
 if {[info exists env(DO_HOLD_ECO_AFTER_FIX)]} {
     set DO_HOLD_ECO_AFTER_FIX $env(DO_HOLD_ECO_AFTER_FIX)
 } else {
     set DO_HOLD_ECO_AFTER_FIX 1
 }
 
-# Hold ECO uses the same final clean output block.
 set HOLD_ECO_OUTPUT_BLOCK $OUTPUT_BLOCK
 
-# Hold ECO guardband.
-# Your original SDC uses 0.10 ns hold uncertainty. During hold ECO only,
-# the script temporarily increases it by HOLD_ECO_GUARDBAND so rounded
-# -0.00 ns paths get real positive margin, then restores the original value.
 if {[info exists env(HOLD_ECO_BASE_HOLD_UNCERTAINTY)]} {
     set HOLD_ECO_BASE_HOLD_UNCERTAINTY $env(HOLD_ECO_BASE_HOLD_UNCERTAINTY)
 } else {
@@ -102,30 +53,19 @@ if {[info exists env(HOLD_ECO_PASSES)]} {
     set HOLD_ECO_PASSES 2
 }
 
-# Scenario names used in your ICC2 flow.
 set SETUP_SCENARIO func.slow_max
 set HOLD_SCENARIO  func.fast_min
 
-# Focus objects from current DRC reports.
 set FOCUS_LAYER M1
 set PG_NETS {VDD VSS}
 
-# Filler/rail settings from your route flow.
 set FILLER_CELLS {saed32hvt/SHFILL*}
 set STD_RAIL_STRATEGY S_std_rails
-
-############################################################
-# 1. Directory setup
-############################################################
 
 set OUTPUT_DIR ./results/${ntl_ver}
 set REPORT_DIR ${OUTPUT_DIR}/reports
 file mkdir $OUTPUT_DIR
 file mkdir $REPORT_DIR
-
-############################################################
-# 2. Helper procedures
-############################################################
 
 proc safe_run {label cmd} {
     puts "INFO: $label"
@@ -237,13 +177,7 @@ proc setup_expected_scenarios {setup_scen hold_scen} {
     }
 }
 
-
 proc auto_detect_drc_nets_from_check_routes {rpt_file pg_net_list} {
-    # Parse ICC2 check_routes detailed lines like:
-    #   EBox: M1-M1 [x1,y1..x2,y2] (N596,VDD) Diff net spacing
-    # Returns two Tcl lists:
-    #   index 0 = all nets seen in DRC EBox pairs
-    #   index 1 = non-PG suspect signal nets only
 
     set all_net_names {}
     set signal_net_names {}
@@ -255,7 +189,6 @@ proc auto_detect_drc_nets_from_check_routes {rpt_file pg_net_list} {
 
     set fp [open $rpt_file r]
     while {[gets $fp line] >= 0} {
-        # Only parse detailed DRC lines that contain a net pair in parentheses.
         if {![regexp {\(([^,()]+),([^,()]+)\)} $line -> net_a net_b]} {
             continue
         }
@@ -334,10 +267,6 @@ proc write_full_physical_checks {report_file} {
     }
 }
 
-############################################################
-# 3. Open routed block
-############################################################
-
 puts "INFO: Opening routed block for DRC debug/fix: $INPUT_BLOCK"
 must_run "Opening input block $INPUT_BLOCK" {
     open_block $INPUT_BLOCK
@@ -378,10 +307,6 @@ safe_redirect ${REPORT_DIR}/74_post_route_drc_debug_context.rpt {
     catch {report_ignored_layers} ignored_msg
     puts $ignored_msg
 }
-
-############################################################
-# 4. Baseline debug reports
-############################################################
 
 safe_redirect ${REPORT_DIR}/75_post_route_check_legality.rpt {
     puts "===== check_legality ====="
@@ -445,10 +370,6 @@ safe_redirect ${REPORT_DIR}/79_post_route_route_app_options.rpt {
     puts $msg_ropt
 }
 
-############################################################
-# 5. Focused M1/PG/signal investigation
-############################################################
-
 set pg_nets [get_nets -quiet $PG_NETS]
 
 safe_redirect ${REPORT_DIR}/80_post_route_pg_net_detail.rpt {
@@ -473,7 +394,6 @@ safe_redirect ${REPORT_DIR}/80_post_route_pg_net_detail.rpt {
     }
 }
 
-# Auto-detect DRC nets from the check_routes report generated above.
 set auto_drc_parse_result [auto_detect_drc_nets_from_check_routes     ${REPORT_DIR}/76_post_route_check_routes_full.rpt     $PG_NETS]
 
 set auto_drc_all_net_names    [lindex $auto_drc_parse_result 0]
@@ -577,10 +497,6 @@ if {$DO_SAVE_DEBUG_BLOCK} {
     }
 }
 
-############################################################
-# 6. Optional repair: rebuild filler/rail shapes before final reroute
-############################################################
-
 if {$DO_M1_PG_DRC_FIX} {
     puts "============================================================"
     puts "INFO: DO_M1_PG_DRC_FIX=1"
@@ -600,12 +516,6 @@ if {$DO_M1_PG_DRC_FIX} {
         catch {check_pg_drc -ignore_std_cells} pgignore_msg
         puts $pgignore_msg
     }
-
-    ########################################################
-    # Key change:
-    #   Make filler/rail M1 shapes visible BEFORE final detail-route cleanup.
-    #   Do not add/recompile std-cell rail M1 shapes after the last DRC cleanup.
-    ########################################################
 
     remove_all_fillers
 
@@ -708,16 +618,6 @@ if {$DO_M1_PG_DRC_FIX} {
             puts $drv_msg
         }
     }
-
-    ########################################################
-    # Optional hold-only ECO cleanup after DRC repair
-    #
-    # Keep this conservative for DOM/SCA:
-    #   - CCD disabled
-    #   - power optimization disabled
-    #   - hold effort high
-    #   - run final incremental detail route and re-check DRC
-    ########################################################
 
     if {$DO_HOLD_ECO_AFTER_FIX} {
         puts "============================================================"
@@ -824,7 +724,6 @@ if {$DO_M1_PG_DRC_FIX} {
             set_clock_uncertainty -hold $HOLD_ECO_BASE_HOLD_UNCERTAINTY [get_clocks clk]
         }
 
-        # Recompute timing with original constraints before final reports.
         catch {update_timing} update_timing_msg
         puts "INFO/WARNING from update_timing after hold uncertainty restore:"
         puts $update_timing_msg
@@ -908,10 +807,6 @@ if {$DO_M1_PG_DRC_FIX} {
     puts "============================================================"
 }
 
-############################################################
-# 7. Final summary
-############################################################
-
 safe_redirect ${REPORT_DIR}/93_post_route_drc_debug_fix_summary.rpt {
     puts "===== Post-route DRC debug/fix summary ====="
     puts "Input block           : $INPUT_BLOCK"
@@ -971,6 +866,4 @@ if {$DO_M1_PG_DRC_FIX} {
 }
 puts "============================================================"
 
-############################################################
-# End of script
-############################################################
+# exit

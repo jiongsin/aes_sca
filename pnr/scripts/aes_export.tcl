@@ -1,24 +1,11 @@
-
-############################################################
-# ICC2 PrimeTime Handoff Export Only Script
-# DOM-based Masked AES Accelerator
-#
-# Purpose:
-#   Run in icc2_shell.
-#   Export only design handoff files needed by PrimeTime.
-#   This script does NOT generate or run any PrimeTime Tcl script.
-#   This script does NOT generate a MANIFEST file.
-############################################################
+# ICC2 handoff export script for the AES PNR flow.
+# Opens the routed AES block and writes PrimeTime handoff collateral such as Verilog, SDC, SPEF, SDF, DEF, floorplan data, and export reports.
 
 source ./scripts/icc2_lib_setup.tcl
 
 set mode    $env(MODE)
 set version $env(VER)
 set ntl_ver $env(DESIGN_VER)
-
-############################################################
-# 0. User switches
-############################################################
 
 if {[info exists env(INPUT_BLOCK)]} {
     set INPUT_BLOCK $env(INPUT_BLOCK)
@@ -38,25 +25,13 @@ set WRITE_FLOORPLAN 1
 
 set COMPRESS_SPEF 0
 
-# Power report corners.
-# Leave this empty to report power for both SETUP_SCENARIO and HOLD_SCENARIO,
-# with leakage/dynamic power enabled on both scenarios.
-# Example override: set POWER_REPORT_SCENARIOS [list func.slow_max]
 set POWER_REPORT_SCENARIOS {}
-
-############################################################
-# 1. Directory setup
-############################################################
 
 set OUTPUT_DIR ./results/${ntl_ver}
 set REPORT_DIR ${OUTPUT_DIR}/reports_export
 
 file mkdir $OUTPUT_DIR
 file mkdir $REPORT_DIR
-
-############################################################
-# 2. Helper procedures
-############################################################
 
 proc safe_run {label cmd} {
     puts "INFO: $label"
@@ -115,10 +90,6 @@ proc file_exists_check {label file required} {
     }
 }
 
-############################################################
-# 3. Open final ICC2 block
-############################################################
-
 puts "INFO: Opening input block for PrimeTime handoff export: $INPUT_BLOCK"
 
 must_run "Opening ICC2 input block $INPUT_BLOCK" {
@@ -145,10 +116,6 @@ safe_redirect ${REPORT_DIR}/01_icc2_export_design_summary.rpt {
         puts $rc_msg
     }
 }
-
-############################################################
-# 4. Scenario setup
-############################################################
 
 set export_scenarios {}
 set power_report_scenarios {}
@@ -198,9 +165,6 @@ if {[llength $export_scenarios] == 0} {
     error "No scenarios available for export."
 }
 
-# Resolve power-report scenarios.
-# By default, power reports are generated for both setup/SS and hold/FF scenarios.
-# Both scenarios have leakage_power and dynamic_power enabled above to avoid POW-009.
 if {[llength $POWER_REPORT_SCENARIOS] > 0} {
     set power_report_scenarios {}
     foreach scen $POWER_REPORT_SCENARIOS {
@@ -222,11 +186,6 @@ safe_redirect ${REPORT_DIR}/02_icc2_export_scenarios.rpt {
     puts ""
     report_scenarios
 }
-
-
-############################################################
-# 4a. Power analysis setup check
-############################################################
 
 safe_redirect ${REPORT_DIR}/02a_icc2_power_analysis_setup.rpt {
     puts "===== power analysis setup ====="
@@ -255,10 +214,6 @@ safe_redirect ${REPORT_DIR}/02a_icc2_power_analysis_setup.rpt {
         }
     }
 }
-
-############################################################
-# 5. Final checks before export
-############################################################
 
 safe_redirect ${REPORT_DIR}/03_icc2_pre_export_physical_checks.rpt {
     puts "===== check_legality ====="
@@ -328,7 +283,6 @@ safe_redirect ${REPORT_DIR}/04_icc2_pre_export_timing_drv.rpt {
     }
 }
 
-
 safe_redirect ${REPORT_DIR}/04a_icc2_pre_export_power.rpt {
     puts "===== ICC2 power report ====="
     puts "Power report scenarios: $power_report_scenarios"
@@ -374,28 +328,16 @@ safe_redirect ${REPORT_DIR}/04a_icc2_pre_export_power.rpt {
     }
 }
 
-############################################################
-# 6. Save ICC2 handoff checkpoint
-############################################################
-
 must_run "Saving ICC2 export checkpoint" {
     save_block -as ${ntl_ver}_export
     save_lib
 }
-
-############################################################
-# 7. Export gate-level Verilog netlist
-############################################################
 
 set VERILOG_FILE ${OUTPUT_DIR}/${ntl_ver}.v
 
 must_run "Writing PrimeTime Verilog netlist" {
     write_verilog $VERILOG_FILE
 }
-
-############################################################
-# 8. Export UPF if enabled and available
-############################################################
 
 if {$WRITE_UPF} {
     set UPF_FILE ${OUTPUT_DIR}/${ntl_ver}.upf
@@ -404,10 +346,6 @@ if {$WRITE_UPF} {
         save_upf $UPF_FILE
     }
 }
-
-############################################################
-# 9. Export SDC per scenario
-############################################################
 
 array unset sdc_file
 
@@ -421,10 +359,6 @@ foreach scen $export_scenarios {
         write_sdc -output $sdc_file($scen)
     }
 }
-
-############################################################
-# 10. Export SPEF parasitics per scenario
-############################################################
 
 array unset spef_file
 array unset spef_files
@@ -495,10 +429,6 @@ if {$WRITE_SPEF} {
     }
 }
 
-############################################################
-# 11. Export optional SDF per scenario
-############################################################
-
 array unset sdf_file
 
 if {$WRITE_SDF} {
@@ -513,10 +443,6 @@ if {$WRITE_SDF} {
         }
     }
 }
-
-############################################################
-# 12. Export DEF / floorplan physical context
-############################################################
 
 if {$WRITE_DEF} {
     set DEF_FILE ${OUTPUT_DIR}/${ntl_ver}.def
@@ -533,10 +459,6 @@ if {$WRITE_FLOORPLAN} {
         write_floorplan -force -output $FP_FILE
     }
 }
-
-############################################################
-# 13. Export advanced technology / standard-cell spacing rules
-############################################################
 
 if {$WRITE_ADV_TECH_RULES} {
     set ADV_TECH_BASENAME ${ntl_ver}_lib_spacing_rules.tcl
@@ -562,10 +484,6 @@ if {$WRITE_ADV_TECH_RULES} {
         puts "INFO: Continuing because this file is optional for PrimeTime handoff."
     }
 }
-
-############################################################
-# 14. Final file existence checks
-############################################################
 
 file_exists_check "Verilog netlist" $VERILOG_FILE 1
 
@@ -623,10 +541,6 @@ if {$WRITE_ADV_TECH_RULES} {
         puts "INFO: Advanced technology rules file not found; optional check skipped."
     }
 }
-
-############################################################
-# 15. Final summary report
-############################################################
 
 safe_redirect ${REPORT_DIR}/05_icc2_export_summary.rpt {
     puts "===== ICC2 PrimeTime handoff export complete ====="
@@ -718,9 +632,5 @@ puts "ICC2 PrimeTime handoff export completed."
 puts "Output directory: $OUTPUT_DIR"
 puts "Reports         : $REPORT_DIR"
 puts "============================================================"
-
-############################################################
-# End of ICC2 PrimeTime handoff export only script
-############################################################
 
 # exit

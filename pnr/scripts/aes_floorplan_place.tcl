@@ -1,19 +1,5 @@
-############################################################
-# ICC2 Floorplanning + Placement Script
-# DOM-based AES SCA Accelerator
-#
-# - Array-style MCMM setup
-# - M7/M8 enabled
-# - Balanced PG mesh
-# - DFT / scan-related commands removed
-# - DOM/SCA preservation rules added
-# - random_bits nets allowed to be buffered
-# - Post-place PG reconnect + std-cell rail repair
-# - Filler insertion after place_opt
-# - Safe setup/hold/DRV reports
-# - Final congestion uses high effort once
-# - Legal save_block names
-############################################################
+# ICC2 floorplanning and placement script for the AES PNR flow.
+# Reads the synthesized AES netlist, configures MCMM scenarios, creates the floorplan and power grid, applies DOM/SCA placement controls, runs placement optimization, and saves the placed block.
 
 source ./scripts/icc2_lib_setup.tcl
 
@@ -21,32 +7,19 @@ set mode    $env(MODE)
 set version $env(VER)
 set ntl_ver $env(DESIGN_VER)
 
-############################################################
-# 0. User switches
-############################################################
-
 set USE_SHAPE_BLOCKS 0
 set USE_EXPLICIT_PG_VIA_RULES 0
 
 set USE_DOM_SECURITY_RULES 1
 set USE_DOM_SOFT_BOUNDS 1
 
-# Filler cells for SAED32 HVT library
 set FILLER_CELLS {saed32hvt/SHFILL*}
-
-############################################################
-# 1. Directory setup
-############################################################
 
 set OUTPUT_DIR ./results/${ntl_ver}
 set REPORT_DIR ${OUTPUT_DIR}/reports
 
 file mkdir $OUTPUT_DIR
 file mkdir $REPORT_DIR
-
-############################################################
-# 2. Helper procedure
-############################################################
 
 proc safe_set_app_option {opt val} {
     if {[catch {set_app_options -name $opt -value $val} msg]} {
@@ -57,15 +30,7 @@ proc safe_set_app_option {opt val} {
     }
 }
 
-############################################################
-# 3. Runtime setup
-############################################################
-
 set_host_options -max_cores 8
-
-############################################################
-# 4. Read netlist and link design
-############################################################
 
 read_verilog ../syn/results/${ntl_ver}/${ntl_ver}_ntl.v
 link_block
@@ -74,10 +39,6 @@ current_block
 redirect -file ${REPORT_DIR}/01_design_summary_after_link.rpt {
     report_design -summary
 }
-
-############################################################
-# 5. Technology / parasitic setup
-############################################################
 
 read_parasitic_tech \
     -layermap saed32nm_tf_itf_tluplus.map \
@@ -88,25 +49,6 @@ read_parasitic_tech \
     -layermap saed32nm_tf_itf_tluplus.map \
     -tlup saed32nm_1p9m_Cmin.tluplus \
     -name minTLU
-
-############################################################
-# 6. MCMM setup
-############################################################
-# Mode:
-#   func
-#
-# Corners:
-#   slow_max : setup corner, max RC
-#   fast_min : hold corner, min RC
-#
-# Scenarios:
-#   func.slow_max : setup enabled
-#   func.fast_min : hold enabled
-#
-# Note:
-# set_process_label is intentionally removed because your library
-# reported CSTR-040: process label slow/fast is not used by any
-# reference library.
 
 catch {remove_scenarios -all}
 catch {remove_modes -all}
@@ -140,10 +82,8 @@ foreach s [array names s_constr] {
         -corner $c
 }
 
-# Functional mode.
 current_mode func
 
-# Slow/max corner
 current_corner slow_max
 
 set_parasitic_parameters \
@@ -155,7 +95,6 @@ catch {set_voltage 0.95 -object_list VDD}
 catch {set_voltage 0.00 -object_list VSS}
 catch {set_operating_conditions ss0p95v125c}
 
-# Fast/min corner
 current_corner fast_min
 
 set_parasitic_parameters \
@@ -167,13 +106,11 @@ catch {set_voltage 0.95 -object_list VDD}
 catch {set_voltage 0.00 -object_list VSS}
 catch {set_operating_conditions ff0p95v125c}
 
-# Source SDC for each scenario
 foreach s [array names s_constr] {
     current_scenario $s
     source $s_constr($s)
 }
 
-# Scenario status
 set_scenario_status func.slow_max \
     -active true \
     -setup true \
@@ -202,12 +139,6 @@ redirect -file ${REPORT_DIR}/03_check_timing_mcmm.rpt {
     check_timing
 }
 
-############################################################
-# 7. DOM / SCA physical-security preservation rules
-############################################################
-# random_bits nets are intentionally NOT dont_touch.
-# They had max-cap violations, so ICC2 must be allowed to buffer them.
-
 if {$USE_DOM_SECURITY_RULES} {
 
     puts "INFO: Applying DOM/SCA physical-security rules."
@@ -221,10 +152,6 @@ if {$USE_DOM_SECURITY_RULES} {
     set gf4_cells         [get_cells -hierarchical -quiet *gf4_multiplier_sca*]
     set gf4_inv_cells     [get_cells -hierarchical -quiet *gf4_inverter_sca*]
 
-    ############################################################
-    # Share-domain cell collections for DOM/SCA placement bounds
-    ############################################################
-    
     set share0_cells ""
     set share1_cells ""
 
@@ -299,10 +226,6 @@ if {$USE_DOM_SECURITY_RULES} {
         }
     }
 
-    ########################################################
-    # Preserve security-critical nets, excluding random_bits
-    ########################################################
-
     set random_nets       [get_nets -hierarchical -quiet *random_bits*]
 
     set mask_nets         [get_nets -hierarchical -quiet *mask*]
@@ -342,10 +265,6 @@ if {$USE_DOM_SECURITY_RULES} {
         puts "WARNING: No DOM/SCA security nets matched. Check net names after synthesis."
     }
 
-    ########################################################
-    # Preserve selected security registers
-    ########################################################
-
     set state_regs        [get_cells -hierarchical -quiet *state_reg*]
     set cross_regs        [get_cells -hierarchical -quiet *cross_*_reg*]
     set inner_regs        [get_cells -hierarchical -quiet *inner_*_reg*]
@@ -361,10 +280,6 @@ if {$USE_DOM_SECURITY_RULES} {
     } else {
         puts "INFO: No DOM/SCA security registers matched."
     }
-
-    ########################################################
-    # Optional share soft bounds
-    ########################################################
 
     if {$USE_DOM_SOFT_BOUNDS} {
 
@@ -413,10 +328,6 @@ if {$USE_DOM_SECURITY_RULES} {
     puts "INFO: USE_DOM_SECURITY_RULES = 0. Skipping DOM/SCA security rules."
 }
 
-############################################################
-# 8. Site, routing direction, track, and routing layer setup
-############################################################
-
 set_attribute [get_site_defs unit] symmetry Y
 set_attribute [get_site_defs unit] is_default true
 
@@ -434,10 +345,6 @@ redirect -file ${REPORT_DIR}/05_ignored_layers.rpt {
     report_ignored_layers
 }
 
-############################################################
-# 9. Initial floorplan
-############################################################
-
 initialize_floorplan \
     -side_ratio {1 1} \
     -core_offset {15} \
@@ -453,17 +360,9 @@ redirect -file ${REPORT_DIR}/06_floorplan_utilization.rpt {
     report_utilization
 }
 
-############################################################
-# 10. Floorplan placement setup
-############################################################
-
 safe_set_app_option place.coarse.fix_hard_macros false
 safe_set_app_option plan.place.auto_create_blockages auto
 safe_set_app_option place.legalize.enable_prerouted_net_check true
-
-############################################################
-# 11. Coarse floorplan placement
-############################################################
 
 create_placement -floorplan
 
@@ -476,26 +375,14 @@ if {[sizeof_collection $hard_macros] > 0} {
     puts "INFO: No hard macros found. Skipping set_fixed_objects."
 }
 
-############################################################
-# 12. Block pin placement
-############################################################
-
 set_block_pin_constraints \
     -self \
     -allowed_layers {M3 M4 M5 M6}
 
 place_pins -self
 
-############################################################
-# 13. Power network cleanup
-############################################################
-
 remove_pg_strategies -all
 remove_pg_patterns   -all
-
-############################################################
-# 14. Create and connect PG nets
-############################################################
 
 if {[sizeof_collection [get_nets -quiet VDD]] == 0} {
     create_net -power VDD
@@ -520,17 +407,9 @@ if {[sizeof_collection $vss_pins] > 0} {
 
 connect_pg_net -automatic
 
-############################################################
-# 15. PG via master rule
-############################################################
-
 set_pg_via_master_rule \
     -via_array_dimension {2 1} \
     pgvia_2x1
-
-############################################################
-# 16. PG patterns
-############################################################
 
 create_pg_ring_pattern ring_M5_M6 \
     -horizontal_layer M5 \
@@ -554,10 +433,6 @@ create_pg_mesh_pattern M7_M8_mesh \
 create_pg_std_cell_conn_pattern P_std_cell_rail \
     -layers {M1}
 
-############################################################
-# 17. PG strategies
-############################################################
-
 set_pg_strategy core_pgring \
     -core \
     -pattern {{name : ring_M5_M6} {nets : {VDD VSS}} {offset : {2 2}}}
@@ -576,10 +451,6 @@ set_pg_strategy S_std_rails \
     -core \
     -pattern {{name : P_std_cell_rail} {nets : {VDD VSS}}} \
     -extension {{{stop : core_boundary}}}
-
-############################################################
-# 18. Compile PG
-############################################################
 
 if {$USE_EXPLICIT_PG_VIA_RULES} {
 
@@ -607,10 +478,6 @@ if {$USE_EXPLICIT_PG_VIA_RULES} {
 
 connect_pg_net -automatic
 
-############################################################
-# 19. Pre-place power-grid checks
-############################################################
-
 redirect -file ${REPORT_DIR}/07_pre_place_pg_connectivity.rpt {
     check_pg_connectivity
 }
@@ -619,19 +486,11 @@ redirect -file ${REPORT_DIR}/08_pre_place_pg_drc_ignore_std_cells.rpt {
     check_pg_drc -ignore_std_cells
 }
 
-############################################################
-# 20. Write floorplan output and save checkpoint
-############################################################
-
 write_floorplan -force \
     -output ${OUTPUT_DIR}/${ntl_ver}.fp
 
 save_block -as ${ntl_ver}_after_floorplan
 save_lib
-
-############################################################
-# 21. Pre-placement checks
-############################################################
 
 redirect -file ${REPORT_DIR}/09_check_design_pre_place.rpt {
     check_design -checks pre_placement_stage
@@ -643,22 +502,10 @@ redirect -file ${REPORT_DIR}/10_pre_place_qor.rpt {
     report_utilization
 }
 
-############################################################
-# 22. Placement QoR / hold setup
-############################################################
-
 safe_set_app_option place.coarse.enhanced_auto_density_control true
 safe_set_app_option opt.common.hold_effort high
 
-############################################################
-# 23. Placement and optimization
-############################################################
-
 place_opt
-
-############################################################
-# 23a. Post-place PG reconnect, rail repair, and filler insertion
-############################################################
 
 connect_pg_net -automatic
 
@@ -683,18 +530,10 @@ redirect -file ${REPORT_DIR}/11b_post_place_pg_drc_ignore_std_cells.rpt {
 save_block -as ${ntl_ver}_after_place_opt
 save_lib
 
-############################################################
-# 24. Post-placement QoR reports
-############################################################
-
 redirect -file ${REPORT_DIR}/11_post_place_qor.rpt {
     report_qor -summary
     report_utilization
 }
-
-############################################################
-# 24a. Post-placement setup/hold timing reports
-############################################################
 
 redirect -file ${REPORT_DIR}/12_post_place_timing_mcmm.rpt {
 
@@ -739,10 +578,6 @@ redirect -file ${REPORT_DIR}/12_post_place_timing_mcmm.rpt {
     }
 }
 
-############################################################
-# 24b. Post-placement DRV reports
-############################################################
-
 redirect -file ${REPORT_DIR}/12a_post_place_drv.rpt {
 
     puts "===== DRV constraints: func.slow_max ====="
@@ -776,10 +611,6 @@ redirect -file ${REPORT_DIR}/12a_post_place_drv.rpt {
     }
 }
 
-############################################################
-# 24c. DOM/SCA post-placement report
-############################################################
-
 if {$USE_DOM_SECURITY_RULES} {
     redirect -file ${REPORT_DIR}/13_post_place_dom_security.rpt {
         puts "===== Post-placement DOM/SCA security report ====="
@@ -794,10 +625,6 @@ if {$USE_DOM_SECURITY_RULES} {
     }
 }
 
-############################################################
-# 25. Post-placement congestion analysis
-############################################################
-
 route_global \
     -effort_level high \
     -congestion_map_only true
@@ -805,10 +632,6 @@ route_global \
 redirect -file ${REPORT_DIR}/14_post_place_congestion.rpt {
     report_congestion
 }
-
-############################################################
-# 26. Final stage status summary
-############################################################
 
 redirect -file ${REPORT_DIR}/15_stage_status_summary.rpt {
     puts "===== Floorplan/Placement Stage Summary ====="
@@ -820,15 +643,7 @@ redirect -file ${REPORT_DIR}/15_stage_status_summary.rpt {
     puts "DOM/SCA: check 13_post_place_dom_security.rpt"
 }
 
-############################################################
-# 27. Final checkpoint
-############################################################
-
 save_block -as ${ntl_ver}_final_floorplan_place
 save_lib
-
-############################################################
-# End of script
-############################################################
 
 # exit

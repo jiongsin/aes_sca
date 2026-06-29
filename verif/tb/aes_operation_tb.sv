@@ -1,8 +1,14 @@
+//------------------------------------------------------------------------------
+// File        : aes_operation_tb.sv
+// Description : Top-level SystemVerilog testbench for the AES operation block.
+//               Configures AES-128/192/256 operation, instantiates the selected DUT, and coordinates stimulus, monitoring, scoreboard checking, and optional SCA randomization.
+//------------------------------------------------------------------------------
+
 `ifdef AES_OPERATION
 
 module aes_operation_tb;
     import aes_operation_pkg::*;
-    
+
     `ifdef AES_256
         parameter MODE = 256;
         `define MODE 256
@@ -13,7 +19,7 @@ module aes_operation_tb;
         parameter MODE = 128;
         `define MODE 128
     `endif
-    
+
     `ifdef AES_BASE
         `define VER base
     `elsif AES_OPT
@@ -66,7 +72,7 @@ module aes_operation_tb;
 
     initial begin
         event e_sync;
-        mailbox gen2drv = new(10); 
+        mailbox gen2drv = new(10);
         mailbox mon2scb = new();
 
         aes_operation_driver#(MODE)   drv = new(intf, gen2drv, e_sync);
@@ -86,8 +92,8 @@ module aes_operation_tb;
         intf.random_bits = 144'd0;
         `endif
         repeat(5) @(negedge clk);
-        rst_n = 1;      
-        repeat(5) @(posedge clk); 
+        rst_n = 1;
+        repeat(5) @(posedge clk);
 
         fork
             drv.run();
@@ -98,11 +104,11 @@ module aes_operation_tb;
         begin
             if (!$value$plusargs("COUNT=%d", test_count)) test_count = 1000;
             $display("[%0t] [TOP] Starting AES %0d Random Simulation", $time, MODE);
-                
+
             `ifdef AES_SCA
                 for (int i = 0; i < test_count; i++) begin
-                    aes_operation_transaction#(MODE) tr_A = new(); 
-                    aes_operation_transaction#(MODE) tr_B = new(); 
+                    aes_operation_transaction#(MODE) tr_A = new();
+                    aes_operation_transaction#(MODE) tr_B = new();
 
                     `ifdef TVLA_STATIC
                         tr_A.plain_text = 128'h3243f6a8_885a308d_313198a2_e0370734;
@@ -116,16 +122,16 @@ module aes_operation_tb;
                         if(!tr_A.randomize()) $fatal("Randomization failed");
                         if(!tr_B.randomize()) $fatal("Randomization failed");
                     `endif
-                    
-                    tr_B.key = tr_A.key; 
-        
-                    gen2drv.put(tr_A); 
-                    gen2drv.put(tr_B); 
+
+                    tr_B.key = tr_A.key;
+
+                    gen2drv.put(tr_A);
+                    gen2drv.put(tr_B);
                 end
                 wait(scb.transaction_count == test_count * 2);
             `else
                 for (int i = 0; i < test_count; i++) begin
-                    aes_operation_transaction#(MODE) tr = new(); 
+                    aes_operation_transaction#(MODE) tr = new();
                     `ifdef TVLA_STATIC
                         tr.plain_text = 128'h3243f6a8_885a308d_313198a2_e0370734;
                         tr.key        = 128'h2b7e1516_28aed2a6_abf71588_09cf4f3c;
@@ -135,32 +141,20 @@ module aes_operation_tb;
                     `else
                         if(!tr.randomize()) $fatal("Randomization failed");
                     `endif
-        
-                    gen2drv.put(tr); 
+
+                    gen2drv.put(tr);
                     @(e_sync);
                 end
                 wait(scb.transaction_count == test_count);
             `endif
-            
+
             repeat(5) @(posedge clk);
         end
 
-        scb.report(); 
+        scb.report();
         $finish;
-    end
-    
-    initial begin
-        if ($test$plusargs("DUMP_VCD")) begin
-            `ifdef TVLA_STATIC
-                $dumpfile("./sim_static/aes_operation.vcd");
-            `elsif TVLA_DYNAMIC
-                $dumpfile("./sim_dynamic/aes_operation.vcd");
-            `else
-                $dumpfile("./sim/aes_operation.vcd");
-            `endif
-            $dumpvars(0, aes_operation_tb.dut);
-        end
     end
 endmodule
 
 `endif
+

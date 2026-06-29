@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module: aes_sbox_base
+// Description: Combinational baseline AES S-box lookup table.
+//              Maps each 8-bit input byte to the standard AES substitution value.
+// -----------------------------------------------------------------------------
 module aes_sbox_base (
     input [7:0] data_in,
     output reg [7:0] data_out

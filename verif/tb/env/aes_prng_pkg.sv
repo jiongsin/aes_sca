@@ -1,6 +1,11 @@
+//------------------------------------------------------------------------------
+// File        : aes_prng_pkg.sv
+// Description : SystemVerilog verification package for the AES PRNG testbench.
+//               Defines PRNG transactions, driver and monitor components, cycle-accurate xorshift reference behavior, scoreboard checking, and reporting.
+//------------------------------------------------------------------------------
+
 package aes_prng_pkg;
 
-    // Transaction Object
     class aes_prng_transaction;
         bit rst_n;
         rand bit [31:0] trng_in;
@@ -12,7 +17,6 @@ package aes_prng_pkg;
         }
     endclass
 
-    // Driver Component
     class aes_prng_driver;
         virtual aes_prng_if vif;
         mailbox gen2drv;
@@ -33,7 +37,6 @@ package aes_prng_pkg;
         endtask
     endclass
 
-    // Monitor Component
     class aes_prng_monitor;
         virtual aes_prng_if vif;
         mailbox mon2scb;
@@ -56,13 +59,11 @@ package aes_prng_pkg;
         endtask
     endclass
 
-    // Scoreboard and Cycle Accurate Reference Model
     class aes_prng_scoreboard;
         mailbox mon2scb;
         int transaction_count = 0;
         int mismatch_count = 0;
 
-        // Internal golden state variables
         bit [31:0] b1 = 32'd1;
         bit [31:0] b2 = 32'd2;
         bit [31:0] b3 = 32'd3;
@@ -102,14 +103,13 @@ package aes_prng_pkg;
 
                     if (trans.random_out !== expected_out) begin
                         mismatch_count++;
-                        $error("[%0t] [FAIL] Trans #%0d Mismatch! Expected: %h | Got: %h", 
+                        $error("[%0t] [FAIL] Trans #%0d Mismatch! Expected: %h | Got: %h",
                                $time, transaction_count, expected_out, trans.random_out);
                     end else begin
-                        $display("[%0t] [PASS] Trans #%0d Match! Output: %h", 
+                        $display("[%0t] [PASS] Trans #%0d Match! Output: %h",
                                  $time, transaction_count, trans.random_out);
                     end
 
-                    // Update golden model state for the next clock edge
                     begin
                         bit [31:0] next_b1, next_b2, next_b3, next_b4, next_b5;
                         next_b1 = trans.trng_valid ? (xs32_ref(b5) ^ trans.trng_in) : xs32_ref(b5);
@@ -134,10 +134,11 @@ package aes_prng_pkg;
             $display("========================================");
             $display(" Total Checked Cycles : %0d", transaction_count);
             $display(" Mismatches           : %0d", mismatch_count);
-            $display(" TEST STATUS          : %s", 
+            $display(" TEST STATUS          : %s",
                     (mismatch_count == 0 && transaction_count > 0) ? "PASSED" : "FAILED");
             $display("========================================\n");
         endfunction
     endclass
 
 endpackage
+

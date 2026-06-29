@@ -1,16 +1,19 @@
+//------------------------------------------------------------------------------
+// File        : aes_prng_tb.sv
+// Description : Top-level SystemVerilog testbench for the AES SCA PRNG block.
+//               Instantiates the PRNG interface and DUT, applies randomized TRNG-valid stimulus, and checks generated random output with the package scoreboard.
+//------------------------------------------------------------------------------
+
 `ifdef AES_PRNG
 
 module aes_prng_tb;
     bit clk;
     int test_count;
 
-    // Clock Generator
     always #5ns clk = ~clk;
 
-    // Interface Instantiation
     aes_prng_if intf(clk);
 
-    // Design Under Test Instantiation
     aes_prng_sca dut (
         .clk         (intf.clk),
         .rst_n       (intf.rst_n),
@@ -32,15 +35,13 @@ module aes_prng_tb;
         end
 
         $display("[%0t] [TOP] Starting PRNG Verification Suite", $time);
-        
-        // Start verification environment threads before reset
+
         fork
             drv.run();
             mon.run();
             scb.run();
         join_none
 
-        // Assert Reset Hardware State
         intf.rst_n = 0;
         intf.trng_valid = 0;
         intf.trng_in = 0;
@@ -48,20 +49,19 @@ module aes_prng_tb;
         intf.rst_n = 1;
         repeat(1) @(posedge clk);
 
-        // Stimulus Generation Loop
         for (int i = 0; i < test_count; i++) begin
             aes_prng_pkg::aes_prng_transaction tr = new();
             if (!tr.randomize()) $fatal("Randomization failed");
             gen2drv.put(tr);
         end
 
-        // Wait for processing to complete
         wait(scb.transaction_count == test_count);
         repeat(2) @(posedge clk);
-        
+
         scb.report();
         $finish;
     end
 endmodule
 
 `endif
+

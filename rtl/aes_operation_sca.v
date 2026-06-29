@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module: aes_operation_sca
+// Description: Masked side-channel-aware iterative AES encryption core.
+//              Processes shared key/data state with random masks, masked S-box logic, key expansion, MixColumns, and 32-bit serialized input/output handling.
+// -----------------------------------------------------------------------------
 module aes_operation_sca #(
     parameter MODE = 128
 ) (
@@ -33,9 +38,9 @@ module aes_operation_sca #(
 
     reg [127:0] state_reg_A_0, state_reg_A_1;
     reg [127:0] state_reg_B_0, state_reg_B_1;
-    
+
     reg [(MODE)-1:0] key_reg_0, key_reg_1;
-    
+
     reg [127:0] round_key_reg_0, round_key_reg_1;
 
     wire [31:0] shifted_col_A_0, shifted_col_A_1;
@@ -80,11 +85,11 @@ module aes_operation_sca #(
 
     wire [31:0] key_sbox_in_0, key_sbox_in_1;
     wire [31:0] key_sbox_out_0, key_sbox_out_1;
-    
+
     wire [31:0] shared_sbox_in_0 = 
         (cycle_cnt == 4'd0) ? key_sbox_in_0 :
         (cycle_cnt >= 4'd1 && cycle_cnt <= 4'd4) ? shifted_col_A_0 : shifted_col_B_0;
-        
+
     wire [31:0] shared_sbox_in_1 = 
         (cycle_cnt == 4'd0) ? key_sbox_in_1 :
         (cycle_cnt >= 4'd1 && cycle_cnt <= 4'd4) ? shifted_col_A_1 : shifted_col_B_1;
@@ -268,7 +273,7 @@ module aes_operation_sca #(
                         key_reg_1 <= {masked_key_in_1, key_reg_1[(MODE)-1 : 32]};
                         round_key_reg_0 <= {masked_key_in_0, round_key_reg_0[127:32]};
                         round_key_reg_1 <= {masked_key_in_1, round_key_reg_1[127:32]};
-                        
+
                         state_reg_A_0 <= {data_in ^ data_mask ^ masked_key_in_0, state_reg_A_0[127:32]};
                         state_reg_A_1 <= {data_mask ^ masked_key_in_1, state_reg_A_1[127:32]};
                     end
@@ -280,11 +285,11 @@ module aes_operation_sca #(
                             key_reg_0 <= {masked_key_in_0, key_reg_0[(MODE)-1 : 32]};
                             key_reg_1 <= {masked_key_in_1, key_reg_1[(MODE)-1 : 32]};
                         end
-                        
+
                         if (cycle_cnt < 4'd4) begin
                             round_key_reg_0 <= {masked_key_in_0, round_key_reg_0[127:32]};
                             round_key_reg_1 <= {masked_key_in_1, round_key_reg_1[127:32]};
-                            
+
                             state_reg_A_0 <= {data_in ^ data_mask ^ masked_key_in_0, state_reg_A_0[127:32]};
                             state_reg_A_1 <= {data_mask ^ masked_key_in_1, state_reg_A_1[127:32]};
                         end
@@ -295,7 +300,7 @@ module aes_operation_sca #(
                     if (cycle_cnt >= 4'd4 && cycle_cnt <= 4'd7) begin
                         key_reg_0 <= {expanded_key_word_0, key_reg_0[(MODE)-1 : 32]};
                         key_reg_1 <= {expanded_key_word_1, key_reg_1[(MODE)-1 : 32]};
-                        
+
                         `ifdef AES_256
                             round_key_reg_0 <= {key_reg_0[159:128], round_key_reg_0[127:32]};
                             round_key_reg_1 <= {key_reg_1[159:128], round_key_reg_1[127:32]};
@@ -307,12 +312,12 @@ module aes_operation_sca #(
                             round_key_reg_1 <= {expanded_key_word_1, round_key_reg_1[127:32]};
                         `endif
                     end
-                    
+
                     if (cycle_cnt >= 4'd5 && cycle_cnt <= 4'd8) begin
                         state_reg_A_0 <= {round_data_out_0, state_reg_A_0[127:32]};
                         state_reg_A_1 <= {round_data_out_1, state_reg_A_1[127:32]};
                     end
-                    
+
                     if (cycle_cnt >= 4'd0 && cycle_cnt <= 4'd3) begin
                         if (round_cnt > 4'd1) begin
                             state_reg_B_0 <= {round_data_out_0, state_reg_B_0[127:32]};
@@ -323,17 +328,17 @@ module aes_operation_sca #(
                         end
                     end
                 end
-                
+
                 S_OUTPUT: begin
                     if (cycle_cnt >= 4'd0 && cycle_cnt <= 4'd3) begin
                         state_reg_B_0 <= {round_data_out_0, state_reg_B_0[127:32]};
                         state_reg_B_1 <= {round_data_out_1, state_reg_B_1[127:32]};
-                        
+
                         state_reg_A_0 <= {32'd0, state_reg_A_0[127:32]};
                         state_reg_A_1 <= {32'd0, state_reg_A_1[127:32]};
                     end
                 end
-                
+
                 default: begin end
             endcase
         end
@@ -354,7 +359,11 @@ module aes_operation_sca #(
     end
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: aes_key_expansion_sca
+// Description: Masked AES key expansion logic for the SCA datapath.
+//              Updates the shared key schedule and produces shared round-key words for AES-128, AES-192, or AES-256 operation.
+// -----------------------------------------------------------------------------
 module aes_key_expansion_sca #(
     parameter MODE = 128
 ) (
@@ -384,20 +393,20 @@ module aes_key_expansion_sca #(
     wire [31:0] last_word_0  = full_key_0[MODE-1 : MODE-32];
     wire [31:0] first_word_1 = full_key_1[31:0];
     wire [31:0] last_word_1  = full_key_1[MODE-1 : MODE-32];
-    
+
     `ifdef AES_192
         wire [31:0] lookahead_w_0 = full_key_0[63:32] ^ full_key_0[31:0] ^ full_key_0[191:160];
         wire [31:0] lookahead_w_1 = full_key_1[63:32] ^ full_key_1[31:0] ^ full_key_1[191:160];
-        
+
         wire [31:0] sbox_word_0 = (round_idx % 3 == 2) ? lookahead_w_0 : last_word_0;
         wire [31:0] sbox_word_1 = (round_idx % 3 == 2) ? lookahead_w_1 : last_word_1;
-        
+
         assign sbox_in_0 = {sbox_word_0[7:0], sbox_word_0[31:8]};
         assign sbox_in_1 = {sbox_word_1[7:0], sbox_word_1[31:8]};
     `else
         wire [31:0] rot_word_0 = {last_word_0[7:0], last_word_0[31:8]};
         wire [31:0] rot_word_1 = {last_word_1[7:0], last_word_1[31:8]};
-        
+
         `ifdef AES_256
             assign sbox_in_0 = (i % 8 == 4) ? last_word_0 : rot_word_0;
             assign sbox_in_1 = (i % 8 == 4) ? last_word_1 : rot_word_1;
@@ -435,3 +444,4 @@ module aes_key_expansion_sca #(
         end
     end
 endmodule
+

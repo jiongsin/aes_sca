@@ -1,22 +1,7 @@
 #!/usr/bin/env python3
 
-"""
-TVLA reader for very large PrimePower tvla_traces.out files.
-
-Reads both groups:
-  <WORKAREA>/<FLOW>/results/<DESIGN_VER>/tvla_dynamic/tvla_traces.out
-  <WORKAREA>/<FLOW>/results/<DESIGN_VER>/tvla_static/tvla_traces.out
-
-Parallelism model:
-  - dynamic and static files are processed in parallel
-  - each file is read by exactly one process from start to EOF
-  - no byte-range splitting is used, so no boundary traces are dropped
-
-Use:
-  export FLOW=syn   # or pnr; optional, inferred from cwd when possible
-  export TVLA_TOTAL_WORKERS=2
-  python3 aes_operation_tvla_two_file_parallel.py
-"""
+# TVLA analysis script for AES PrimePower trace outputs.
+# Reads random and fixed power traces, resamples complete encryption windows, computes Welch t-statistics, reports leakage pass/fail status, and saves the TVLA plot.
 
 import concurrent.futures
 import math
@@ -29,17 +14,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
 
-
 DEFAULT_TIME_RESOLUTION_PS = 100.0
 TVLA_THRESHOLD = 4.5
-
 
 def require_env(name: str) -> str:
     value = os.environ.get(name)
     if value is None or value == "":
         raise ValueError(f"{name} is not set")
     return value
-
 
 def infer_flow(workarea: str) -> str:
     flow = os.environ.get("FLOW") or os.environ.get("TARGET_FLOW")
@@ -60,9 +42,8 @@ def infer_flow(workarea: str) -> str:
 
     return "syn"
 
-
 def read_time_resolution_ps(filename: str) -> float:
-    """Read .time_resolution from the header if present."""
+
     try:
         with open(filename, "rb") as f:
             for _ in range(2000):
@@ -74,7 +55,7 @@ def read_time_resolution_ps(filename: str) -> float:
                     parts = stripped.split()
                     if len(parts) >= 2:
                         return float(parts[1]) * 1000.0
-                # Header is normally before numeric data. Stop after first timestamp.
+
                 if stripped.isdigit():
                     break
     except FileNotFoundError:
@@ -83,7 +64,6 @@ def read_time_resolution_ps(filename: str) -> float:
         print(f"Warning: failed to read .time_resolution from {filename}: {exc}")
     return DEFAULT_TIME_RESOLUTION_PS
 
-
 def update_online_stats(mean: np.ndarray, m2: np.ndarray, n: int, trace: np.ndarray):
     n += 1
     delta = trace - mean
@@ -91,7 +71,6 @@ def update_online_stats(mean: np.ndarray, m2: np.ndarray, n: int, trace: np.ndar
     delta2 = trace - mean
     m2 += delta * delta2
     return mean, m2, n
-
 
 def resample_one_trace(
     window_times: Sequence[int],
@@ -129,7 +108,6 @@ def resample_one_trace(
     t_rel = t_rel[order]
     v_rel = v_rel[order]
 
-    # For duplicate relative timestamps, keep the last value.
     _, reversed_first = np.unique(t_rel[::-1], return_index=True)
     last_indices = len(t_rel) - 1 - reversed_first
     last_indices = np.sort(last_indices)
@@ -149,13 +127,11 @@ def resample_one_trace(
     )
     return func(common_time_axis_ps)
 
-
 def first_window_at_or_after(first_time_ps: int, start_time_ps: int, duration_ps: int) -> int:
     if first_time_ps <= start_time_ps:
         return start_time_ps
     k = math.ceil((first_time_ps - start_time_ps) / duration_ps)
     return start_time_ps + k * duration_ps
-
 
 def process_completed_windows(
     *,
@@ -170,12 +146,7 @@ def process_completed_windows(
     n: int,
     force_until_ps: int,
 ):
-    """Process all windows whose end is at or before force_until_ps.
 
-    Since this function is used on a whole file, there are no artificial byte
-    boundaries. A window is skipped only if it genuinely lacks enough samples to
-    resample it.
-    """
     while force_until_ps >= current_end_ps:
         previous_t = None
         previous_v = None
@@ -207,8 +178,6 @@ def process_completed_windows(
         next_start_ps = current_start_ps + encryption_duration_ps
         next_end_ps = current_end_ps + encryption_duration_ps
 
-        # Keep the real last sample at or before the next trace start. This is
-        # needed for previous-value interpolation at the next trace start.
         keep_from = 0
         for i, t in enumerate(times):
             if t <= next_start_ps:
@@ -223,10 +192,8 @@ def process_completed_windows(
 
     return times, values, current_start_ps, current_end_ps, mean, m2, n
 
-
 def is_timestamp_line(stripped: bytes) -> bool:
     return stripped.isdigit()
-
 
 def process_whole_file(
     label: str,
@@ -236,7 +203,7 @@ def process_whole_file(
     encryption_duration_ps: int,
     common_time_axis_ps: np.ndarray,
 ):
-    """Read one tvla_traces.out file from start to EOF in a single process."""
+
     mean = np.zeros_like(common_time_axis_ps, dtype=np.float64)
     m2 = np.zeros_like(common_time_axis_ps, dtype=np.float64)
     n = 0
@@ -303,7 +270,7 @@ def process_whole_file(
                 current_time = new_time
                 current_sum = 0.0
             else:
-                # Power value line: index value. Only the value column is summed.
+
                 if current_time is not None:
                     parts = stripped.split()
                     if len(parts) >= 2:
@@ -312,8 +279,6 @@ def process_whole_file(
                         except ValueError:
                             pass
 
-    # Finalize the last timestamp block at EOF. This does not invent a trace; it
-    # only allows windows ending at or before the final timestamp to be processed.
     if current_time is not None and current_start_ps is not None:
         times.append(current_time)
         values.append(current_sum)
@@ -345,7 +310,6 @@ def process_whole_file(
 
     return label, mean, var, n
 
-
 def render_progress(done_by_label: Dict[str, int], traces_by_label: Dict[str, int], start_wall: float) -> None:
     elapsed = max(time.time() - start_wall, 1e-9)
     done = sum(done_by_label.values())
@@ -364,7 +328,6 @@ def render_progress(done_by_label: Dict[str, int], traces_by_label: Dict[str, in
         end="",
         flush=True,
     )
-
 
 def perform_tvla():
     ver = require_env("VER")
@@ -499,7 +462,6 @@ def perform_tvla():
     else:
         print(f"PASS: No significant leakage detected. Max T value: {max_t:.4f}")
     print(f"Success! Plot saved to: {output_filename}")
-
 
 if __name__ == "__main__":
     perform_tvla()

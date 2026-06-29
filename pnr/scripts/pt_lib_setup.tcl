@@ -1,6 +1,9 @@
-set LIB_PATH "/data/synopsys/lib/saed32nm/lib/"
+# PrimeTime and PrimePower library setup script for the SAED 32 nm flow.
+# Configures target/link libraries, search paths, timing-save options, report precision, and host resources for timing and power analysis.
 
-##Load Design, Libraries
+set LIB_PATH "/data/synopsys/lib/saed32nm/lib/"
+# /home/host/libs/saed32nm/lib"
+
 set_app_var target_library "saed32hvt_ss0p95v125c.db saed32hvt_ff0p95v125c.db"
 set_app_var link_library "* $target_library"
 

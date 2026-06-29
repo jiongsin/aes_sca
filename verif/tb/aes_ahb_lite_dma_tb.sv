@@ -1,3 +1,9 @@
+//------------------------------------------------------------------------------
+// File        : aes_ahb_lite_dma_tb(2).sv
+// Description : Top-level SystemVerilog testbench for the AES AHB-Lite DMA block.
+//               Configures the selected AES mode, instantiates the interface and DUT, drives reset/stimulus, and connects driver, monitor, and scoreboard components.
+//------------------------------------------------------------------------------
+
 `ifdef AES_AHB_LITE_DMA
 
 module aes_ahb_lite_dma_tb;
@@ -33,14 +39,8 @@ module aes_ahb_lite_dma_tb;
 
     assign intf.HRESETn = HRESETn;
 
-    // Strict single-slave AHB-Lite interconnect model:
-    // HREADY is not a master-driven signal.  In a direct one-slave bench,
-    // global HREADY is the selected slave response HREADYOUT.  During reset,
-    // keep it HIGH as required by AHB-Lite reset behavior.
     assign intf.HREADY = (HRESETn === 1'b0) ? 1'b1 : intf.HREADYOUT;
 
-    // Two-level token-paste macros allow `VER/`MODE/`FIFO_DEPTH/`BURST_CNT_W
-    // to expand before being pasted into module names.
     `define AES_DMA_CAT2_I(a,b) a``b
     `define AES_DMA_CAT2(a,b)   `AES_DMA_CAT2_I(a,b)
     `define AES_DMA_CAT8_I(a,b,c,d,e,f,g,h) a``b``c``d``e``f``g``h
@@ -76,8 +76,6 @@ module aes_ahb_lite_dma_tb;
         .irq        (intf.irq)
     );
 
-    // Basic AHB-Lite master hold checker.  When HREADY is LOW, the current
-    // address/control phase is waited and must remain stable until HREADY HIGH.
     bit        hold_active;
     bit        hold_HSEL;
     bit [31:0] hold_HADDR;
@@ -234,3 +232,4 @@ module aes_ahb_lite_dma_tb;
 endmodule
 
 `endif
+

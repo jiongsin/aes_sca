@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module: aes_sbox_sca
+// Description: Masked side-channel-aware AES S-box top level.
+//              Maps shared input bytes into composite-field form, performs masked inversion, and restores the affine-transformed shared output bytes.
+// -----------------------------------------------------------------------------
 module aes_sbox_sca (
     input clk,
     input rst_n,
@@ -29,7 +34,11 @@ module aes_sbox_sca (
     );
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: isomorphic_mapping_sca
+// Description: Composite-field isomorphic mapping for shared S-box inputs.
+//              Applies the linear basis transformation independently to each masked share.
+// -----------------------------------------------------------------------------
 module isomorphic_mapping_sca (
     input  [7:0] data_in_0, data_in_1,
     output [7:0] data_out_0, data_out_1
@@ -65,7 +74,11 @@ module isomorphic_mapping_sca (
     assign data_out_1[0] = s2_1 ^ data_in_1[0];
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: multiplicative_inverter_sca
+// Description: Masked composite-field multiplicative inverter.
+//              Splits mapped shares into GF(2^4) components and uses DOM-protected operations with supplied randomness to compute the inverse.
+// -----------------------------------------------------------------------------
 module multiplicative_inverter_sca (
     input clk,
     input rst_n,
@@ -78,7 +91,7 @@ module multiplicative_inverter_sca (
 
     wire [3:0] b_plus_c_0 = b_0 ^ c_0;
     wire [3:0] b_plus_c_1 = b_1 ^ c_1;
-    
+
     wire [3:0] c_mul_bplusc_0, c_mul_bplusc_1;
 
     gf4_multiplier_sca mul_inst (
@@ -185,7 +198,11 @@ module multiplicative_inverter_sca (
     assign data_out_1 = {out_h_1, out_l_1};
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: merged_inverse_affine_sca
+// Description: Inverse mapping and AES affine transform for shared S-box outputs.
+//              Combines the composite-field restore step with the affine layer while preserving the two-share representation.
+// -----------------------------------------------------------------------------
 module merged_inverse_affine_sca (
     input  [7:0] data_in_0, data_in_1,
     output [7:0] data_out_0, data_out_1
@@ -251,7 +268,11 @@ module merged_inverse_affine_sca (
     assign data_out_1[7] = inv_1[3] ^ t2_1 ^ t3_1;
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: gf4_inverter_sca
+// Description: Masked GF(2^4) inverter used inside the composite-field S-box.
+//              Computes inverse shares with DOM AND gates and random-bit inputs.
+// -----------------------------------------------------------------------------
 module gf4_inverter_sca (
     input clk,
     input rst_n,
@@ -263,7 +284,7 @@ module gf4_inverter_sca (
     wire [1:0] qh_1 = q_1[3:2], ql_1 = q_1[1:0];
 
     wire [1:0] qh_mul_ql_0, qh_mul_ql_1;
-    
+
     gf2_multiplier_sca m_det (
         .clk(clk),
         .rst_n(rst_n),
@@ -319,7 +340,11 @@ module gf4_inverter_sca (
     assign q_inv_1 = {q_inv_h_1, q_inv_l_1};
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: gf4_multiplier_sca
+// Description: Masked GF(2^4) multiplier.
+//              Builds nibble multiplication from shared GF(2) products and DOM-protected cross terms.
+// -----------------------------------------------------------------------------
 module gf4_multiplier_sca (
     input clk,
     input rst_n,
@@ -350,7 +375,11 @@ module gf4_multiplier_sca (
     assign k_1 = {(mul_hl_lh_1 ^ mul_ll_1), (ph_phi_1 ^ mul_ll_1)};
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: gf2_multiplier_sca
+// Description: Masked GF(2) multiplier for single-bit shares.
+//              Uses the DOM AND primitive to produce protected product shares.
+// -----------------------------------------------------------------------------
 module gf2_multiplier_sca (
     input clk,
     input rst_n,
@@ -389,7 +418,11 @@ module gf2_multiplier_sca (
     assign k_1[0] = t1_1 ^ t0_1;
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: dom_and_sca
+// Description: Domain-oriented masked AND gate.
+//              Combines two-share operands with one random bit to generate first-order protected AND output shares.
+// -----------------------------------------------------------------------------
 module dom_and_sca (
     input clk,
     input rst_n,
@@ -422,3 +455,4 @@ module dom_and_sca (
     assign c_0 = inner_0_reg ^ cross_0_reg;
     assign c_1 = inner_1_reg ^ cross_1_reg;
 endmodule
+

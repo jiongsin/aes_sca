@@ -1,12 +1,10 @@
-
+//------------------------------------------------------------------------------
+// File        : aes_ahb_lite_dma_pkg.sv
+// Description : SystemVerilog verification package for the AES AHB-Lite DMA testbench.
+//               Defines DMA transactions, AHB driver tasks, monitor collection, scoreboard checking, and coverage support for the DMA verification flow.
+//------------------------------------------------------------------------------
 
 package aes_ahb_lite_dma_pkg;
-
-    // Revised for strict AHB-Lite testbench connection:
-    // * the driver does not drive HREADY; the top-level testbench loops
-    //   global HREADY from the slave response path for this single-slave bench.
-    // * read tasks wait for HREADYOUT and sample HRDATA only on completed
-    //   OKAY data phases, supporting registered-HRDATA slaves with wait states.
 
     import "DPI-C" function void aes_ctr_ref_model(
         input  int         mode,
@@ -63,7 +61,6 @@ package aes_ahb_lite_dma_pkg;
     localparam int ST_COUNTER_OVERFLOW = 12;
     localparam int ST_ILLEGAL_ACCESS   = 13;
 
-
     class aes_ahb_lite_dma_transaction #(parameter MODE = 128);
 
         rand bit [MODE-1:0] key;
@@ -108,7 +105,6 @@ package aes_ahb_lite_dma_pkg;
 
     endclass
 
-
     class aes_ahb_lite_dma_driver #(parameter MODE = 128);
 
         virtual aes_ahb_lite_dma_if vif;
@@ -125,7 +121,6 @@ package aes_ahb_lite_dma_pkg;
             this.drv2scb = drv2scb;
         endfunction
 
-
         task automatic idle_bus();
             vif.HSEL      = 1'b0;
             vif.HADDR     = 32'd0;
@@ -138,13 +133,11 @@ package aes_ahb_lite_dma_pkg;
             vif.HWDATA    = 32'd0;
         endtask
 
-
         task automatic wait_ready_posedge();
             do begin
                 @(posedge vif.HCLK);
             end while (vif.HREADYOUT !== 1'b1);
         endtask
-
 
         // Use this for read data sampling.  The interface clocking block must
         // sample HRDATA/HREADYOUT with input skew.  This supports both
@@ -155,7 +148,6 @@ package aes_ahb_lite_dma_pkg;
                 @(vif.mon_cb);
             end while (vif.mon_cb.HREADYOUT !== 1'b1);
         endtask
-
 
         task automatic wait_ready_okay_cb(input string phase_name = "AHB transfer");
             wait_ready_cb();
@@ -168,7 +160,6 @@ package aes_ahb_lite_dma_pkg;
             end
         endtask
 
-
         task automatic drive_idle_direct();
             vif.HSEL      = 1'b0;
             vif.HADDR     = 32'd0;
@@ -180,7 +171,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HMASTLOCK = 1'b0;
             vif.HWDATA    = 32'd0;
         endtask
-
 
         task automatic drive_write_direct(
             input bit [31:0] addr,
@@ -197,7 +187,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HWDATA    = data_phase;
         endtask
 
-
         task automatic drive_read_direct(input bit [31:0] addr);
             vif.HSEL      = 1'b1;
             vif.HADDR     = addr;
@@ -210,7 +199,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HWDATA    = 32'd0;
         endtask
 
-
         task automatic drive_final_wdata_direct(input bit [31:0] data_phase);
             vif.HSEL      = 1'b0;
             vif.HADDR     = 32'd0;
@@ -222,7 +210,6 @@ package aes_ahb_lite_dma_pkg;
             vif.HMASTLOCK = 1'b0;
             vif.HWDATA    = data_phase;
         endtask
-
 
         task automatic ahb_write_stream(
             input bit [31:0] addr_q[$],
@@ -262,7 +249,6 @@ package aes_ahb_lite_dma_pkg;
             drive_idle_direct();
         endtask
 
-
         task automatic ahb_write(
             input bit [31:0] addr,
             input bit [31:0] data
@@ -279,7 +265,6 @@ package aes_ahb_lite_dma_pkg;
             ahb_write_stream(addr_q, data_q);
         endtask
 
-
         task automatic ahb_read(
             input  bit [31:0] addr,
             output bit [31:0] data
@@ -287,13 +272,11 @@ package aes_ahb_lite_dma_pkg;
             @(negedge vif.HCLK);
             drive_read_direct(addr);
 
-            // Address phase accepted.
             wait_ready_okay_cb("AHB read address phase");
 
             @(negedge vif.HCLK);
             drive_idle_direct();
 
-            // Data phase accepted. Sample the clocking-block value.
             wait_ready_okay_cb("AHB read data phase");
             data = vif.mon_cb.HRDATA;
 
@@ -307,10 +290,6 @@ package aes_ahb_lite_dma_pkg;
             @(negedge vif.HCLK);
             drive_read_direct(addr);
 
-            // AHB-Lite ERROR response must be two cycles:
-            //   1) HRESP=1, HREADYOUT=0
-            //   2) HRESP=1, HREADYOUT=1
-            // Keep address/control stable until the second cycle completes.
             timeout_cycles = 0;
             do begin
                 @(vif.mon_cb);
@@ -347,18 +326,14 @@ package aes_ahb_lite_dma_pkg;
                      addr);
         endtask
 
-
         task automatic run_error_response_smoke();
             bit [31:0] status;
 
             $display("[%0t] [AHB_ERR_TEST] Starting illegal-access ERROR-response smoke test",
                      $time);
 
-            // A_PTDATA is write-only in this register map. A read from it must
-            // return a two-cycle AHB-Lite ERROR response.
             ahb_read_expect_error(A_PTDATA);
 
-            // Check that the RTL also recorded the sticky illegal-access status.
             ahb_read(A_STATUS, status);
 
             if (status[ST_ILLEGAL_ACCESS] !== 1'b1) begin
@@ -375,8 +350,6 @@ package aes_ahb_lite_dma_pkg;
                      $time);
         endtask
 
-
-
         task automatic ahb_read_stream_same_addr(
             input  bit [31:0] addr,
             input  int        count,
@@ -391,7 +364,6 @@ package aes_ahb_lite_dma_pkg;
             @(negedge vif.HCLK);
             drive_read_direct(addr);
 
-            // First address phase accepted.
             wait_ready_okay_cb("AHB read stream first address phase");
 
             for (int i = 0; i < count; i++) begin
@@ -403,7 +375,6 @@ package aes_ahb_lite_dma_pkg;
                     drive_idle_direct();
                 end
 
-                // Data phase for read i accepted. Sample pre-edge clocking value.
                 wait_ready_okay_cb("AHB read stream data phase");
                 data_q.push_back(vif.mon_cb.HRDATA);
             end
@@ -411,7 +382,6 @@ package aes_ahb_lite_dma_pkg;
             @(negedge vif.HCLK);
             drive_idle_direct();
         endtask
-
 
         task automatic wait_pt_space(input int timeout_cycles = 20000);
             for (int i = 0; i < timeout_cycles; i++) begin
@@ -425,7 +395,6 @@ package aes_ahb_lite_dma_pkg;
             $fatal(1, "[%0t] Timeout waiting for dma_pt_req/PT FIFO space", $time);
         endtask
 
-
         task automatic wait_ct_data(input int timeout_cycles = 20000);
             for (int i = 0; i < timeout_cycles; i++) begin
                 @(posedge vif.HCLK);
@@ -437,7 +406,6 @@ package aes_ahb_lite_dma_pkg;
 
             $fatal(1, "[%0t] Timeout waiting for dma_ct_req/CT FIFO data", $time);
         endtask
-
 
         task automatic build_setup_stream(
             input  aes_ahb_lite_dma_transaction#(MODE) trans,
@@ -489,7 +457,6 @@ package aes_ahb_lite_dma_pkg;
             data_q.push_back(CTRL_START | CTRL_ENABLE | CTRL_IRQ_EN);
         endtask
 
-
         task automatic read_cipher_text(output bit [255:0] ct);
             bit [31:0] rd_q[$];
 
@@ -510,7 +477,6 @@ package aes_ahb_lite_dma_pkg;
                 ct[(i*32) +: 32] = rd_q[i];
             end
         endtask
-
 
         task automatic run_one(input aes_ahb_lite_dma_transaction#(MODE) trans);
             bit [31:0] addr_q[$];
@@ -534,10 +500,6 @@ package aes_ahb_lite_dma_pkg;
             drv2scb.put(trans);
         endtask
 
-
-        // Streaming mode: no PT_LEVEL/CT_LEVEL reads. dma_pt_req gates one
-        // complete 8-word plaintext burst; dma_ct_req gates one complete
-        // 8-word ciphertext burst.
         task automatic write_pt_burst_no_level(
             input aes_ahb_lite_dma_transaction#(MODE) tr_q[$],
             ref   int tx_word_idx,
@@ -577,7 +539,6 @@ package aes_ahb_lite_dma_pkg;
 
             tx_word_idx += 8;
         endtask
-
 
         task automatic read_ct_burst_no_level(
             input aes_ahb_lite_dma_transaction#(MODE) tr_q[$],
@@ -626,7 +587,6 @@ package aes_ahb_lite_dma_pkg;
 
             rx_word_idx += 8;
         endtask
-
 
         task automatic run_stream(input aes_ahb_lite_dma_transaction#(MODE) tr_q[$]);
             bit [31:0] addr_q[$];
@@ -770,7 +730,6 @@ package aes_ahb_lite_dma_pkg;
             end
         endtask
 
-
         task run();
             idle_bus();
 
@@ -783,7 +742,6 @@ package aes_ahb_lite_dma_pkg;
         endtask
 
     endclass
-
 
     class aes_ahb_lite_dma_monitor;
 
@@ -814,7 +772,6 @@ package aes_ahb_lite_dma_pkg;
         endtask
 
     endclass
-
 
     class aes_ahb_lite_dma_scoreboard #(parameter MODE = 128);
 
@@ -941,3 +898,4 @@ package aes_ahb_lite_dma_pkg;
     endclass
 
 endpackage
+

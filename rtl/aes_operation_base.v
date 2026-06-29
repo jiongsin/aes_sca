@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module: aes_operation_base
+// Description: Baseline iterative AES encryption core.
+//              Serially loads key/data words, performs AES rounds using the unmasked round and key-expansion logic, and returns one 32-bit output word per valid cycle.
+// -----------------------------------------------------------------------------
 module aes_operation_base #(
     parameter MODE = 128
 ) (
@@ -169,7 +174,11 @@ module aes_operation_base #(
 
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: aes_round_base
+// Description: Unmasked AES round function.
+//              Applies SubBytes, ShiftRows, optional MixColumns, and AddRoundKey for normal and final AES rounds.
+// -----------------------------------------------------------------------------
 module aes_round_base (
     input  [127:0] state_in,
     input  [127:0] key_in,
@@ -209,7 +218,11 @@ module aes_round_base (
 
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: aes_mix_columns_base
+// Description: Unmasked AES MixColumns transform for one 32-bit state column.
+//              Computes the GF(2^8) column multiplication used by non-final AES rounds.
+// -----------------------------------------------------------------------------
 module aes_mix_columns_base (
     input  [31:0] data_in,
     output [31:0] data_out
@@ -238,7 +251,11 @@ module aes_mix_columns_base (
 
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: aes_key_expansion_128_base
+// Description: Baseline AES key expansion wrapper for the selected key size.
+//              Generates the current round key and next stored key state for AES-128, AES-192, or AES-256 configurations.
+// -----------------------------------------------------------------------------
 module aes_key_expansion_128_base #(
     parameter MODE = 128
 ) (
@@ -291,7 +308,11 @@ module aes_key_expansion_128_base #(
 
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: aes_single_word_gen_base
+// Description: Single-word AES key schedule primitive.
+//              Applies rotation, S-box substitution, Rcon injection, and XOR chaining to generate one expanded key word.
+// -----------------------------------------------------------------------------
 module aes_single_word_gen_base #(
     parameter MODE = 128
 ) (
@@ -356,3 +377,4 @@ module aes_single_word_gen_base #(
     end
 
 endmodule
+

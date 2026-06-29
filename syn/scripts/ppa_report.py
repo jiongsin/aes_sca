@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# PPA summary report generator for AES synthesis results.
+# Scans result directories, extracts timing, power, area, dynamic/static power percentages, and net-length data, then writes a consolidated overview report.
+
 import os
 import glob
 import re
@@ -34,7 +37,6 @@ def generate_ppa_report():
 
             processed_designs.append(design_name)
 
-            # QoR variables
             target_group = "clk"
             current_group = None
 
@@ -49,14 +51,12 @@ def generate_ppa_report():
             with open(qor_file, 'r') as f:
                 qor_lines = f.readlines()
 
-            # Read QoR data
             for line in qor_lines:
                 group_match = re.search(r"Timing Path Group '([^']+)'", line)
                 if group_match:
                     current_group = group_match.group(1).strip()
                     continue
 
-                # Only use clk path group for performance / Fmax
                 if current_group == target_group:
                     if "Critical Path Slack:" in line:
                         try:
@@ -70,7 +70,6 @@ def generate_ppa_report():
                         except ValueError:
                             clk_period = None
 
-                # Area data is global, not specific to clk group
                 if "Combinational Area:" in line:
                     combo_area = float(line.split(':')[1].strip())
 
@@ -83,7 +82,6 @@ def generate_ppa_report():
                 elif "Net Length" in line and ":" in line:
                     net_length = line.split(':')[1].strip()
 
-            # Calculate Maximum Frequency in MHz using clk group only
             if clk_slack is not None and clk_period is not None and clk_period > 0:
                 critical_delay = clk_period - clk_slack
 
@@ -95,7 +93,6 @@ def generate_ppa_report():
             else:
                 freq_str = "Data not found"
 
-            # Power variables
             int_val = sw_val = stat_val = tot_val = 0.0
             int_unit = sw_unit = stat_unit = tot_unit = ""
 
@@ -146,11 +143,9 @@ def generate_ppa_report():
             dyn_pct = (dyn_val_uW / tot_val_uW * 100) if tot_val_uW > 0 else 0
             stat_pct = (stat_val_uW / tot_val_uW * 100) if tot_val_uW > 0 else 0
 
-            # Keep dynamic power display using internal power unit
             dyn_val_display = dyn_val_uW
             dyn_unit_display = "uW"
 
-            # Area details
             kge = (design_area / 2.54144 / 1000) if design_area > 0 else 0
             combo_pct = (combo_area / design_area * 100) if design_area > 0 else 0
             noncombo_pct = (noncombo_area / design_area * 100) if design_area > 0 else 0
@@ -195,6 +190,6 @@ def generate_ppa_report():
 
     print(f"\nFile saved at:\n  {output_report_path}\n")
 
-
 if __name__ == '__main__':
     generate_ppa_report()
+

@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module: aes_ctr_sca
+// Description: Side-channel-aware AES-CTR stream controller.
+//              Loads key and nonce words into the AES core, increments the counter stream, XORs plaintext words with keystream words, and produces ciphertext-valid output.
+// -----------------------------------------------------------------------------
 module aes_ctr_sca #(
     parameter MODE = 128
 ) (
@@ -23,13 +28,7 @@ module aes_ctr_sca #(
 
     wire [143:0] random_bits;
 
-`ifdef AES_256
-    reg [255:0] key_reg, next_key_reg;
-`elsif AES_192
-    reg [191:0] key_reg, next_key_reg;
-`else
-    reg [127:0] key_reg, next_key_reg;
-`endif
+    reg [MODE-1:0] key_reg, next_key_reg;
 
     reg [127:0] nonce_reg, next_nonce_reg;
 
@@ -48,13 +47,7 @@ module aes_ctr_sca #(
             state <= S_IDLE;
             count <= 4'd0;
 
-        `ifdef AES_256
-            key_reg <= 256'd0;
-        `elsif AES_192
-            key_reg <= 192'd0;
-        `else
-            key_reg <= 128'd0;
-        `endif
+            key_reg <= {MODE{1'b0}};
 
             nonce_reg <= 128'd0;
         end else begin
@@ -230,7 +223,11 @@ module aes_ctr_sca #(
 
 endmodule
 
-
+// -----------------------------------------------------------------------------
+// Module: aes_prng_sca
+// Description: Lightweight xorshift-based PRNG used to expand the TRNG seed into mask randomness.
+//              Captures a seed on valid input and generates the random-bit bus consumed by the masked AES datapath.
+// -----------------------------------------------------------------------------
 module aes_prng_sca (
     input clk,
     input rst_n,
@@ -276,3 +273,4 @@ module aes_prng_sca (
     assign random_out = {b5[15:0], b4, b3, b2, b1};
 
 endmodule
+
