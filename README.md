@@ -13,7 +13,6 @@ ASIC design workspace for AES hardware variants, including baseline, optimized, 
 ## Supported AES Variants
 
 - `base` - Table-based/reference-oriented AES implementation.
-- `opt` - Composite-field optimized S-box and operation path.
 - `sca` - Masked side-channel-resilient implementation using shared randomness.
 
 The Makefile uses `DESIGN`, `VER`, and `MODE` to select the design variant and AES key size.
@@ -43,17 +42,10 @@ export WORKAREA=/path/to/aes_sca
 - `VER` - Design version, such as `base`, `opt`, or `sca`.
 - `MODE` - AES key size: `128`, `192`, or `256`.
 - `PERIOD` - Clock period in nanoseconds. Default: `10.0`.
-- `LIBV` - Library node selector, such as `32` or `14`.
 - `TEST_CNT` - Number of test encryptions. Default: `100`.
 - `TVLA` - Power-analysis mode: `none`, `static`, or `dynamic`.
 
 ## Typical Flow
-
-Prepare technology setup files:
-
-```sh
-make libv LIBV=32
-```
 
 Run RTL simulation:
 
