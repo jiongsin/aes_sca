@@ -106,11 +106,7 @@ PT_SHELL      = pt_shell
 .PHONY: all sim saif verdi syn syn.sim syn.verdi syn.psim syn.tvla syn.all syn.alp pnr pnr.sim pnr.verdi pnr.psim pnr.tvla pnr.all pnr.alp sta repeat debug help
 
 all: sim saif syn saif syn.sim pnr pnr.sim pnr.psim sta
-<<<<<<< HEAD
-all.tvla: sim saif syn syn.sim pnr pnr.alp sta
-=======
 all.tvla: sim saif syn syn.sim syn.alp pnr pnr.alp sta
->>>>>>> 1ba3008 (Revised to clean version)
 
 sim:
 	@echo "Starting Simulation for $(DESIGN_VER)..."
