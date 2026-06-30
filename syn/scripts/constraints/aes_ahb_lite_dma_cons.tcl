@@ -9,7 +9,7 @@ echo "Applying Constraints"
 echo "----------------------------------------------------------------"
 
 set CLK_PORT_NAME "HCLK"
-set CLK_PERIOD 10.0
+set CLK_PERIOD $env(period)
 set period [string map {. p} $CLK_PERIOD]
 set DELAY [expr $CLK_PERIOD * 0.40]
 
@@ -32,8 +32,8 @@ set_load 0.05 [all_outputs]
 set_max_transition 0.5 [current_design]
 
 set_propagated_clock [all_clocks]
-set_ideal_network [get_ports clk]
-set_ideal_network [get_ports rst_n]
+set_ideal_network [get_ports HCLK]
+set_ideal_network [get_ports HRESETn]
 
 set_fix_multiple_port_nets -all -buffer_constant
 change_names -rules verilog -hierarchy

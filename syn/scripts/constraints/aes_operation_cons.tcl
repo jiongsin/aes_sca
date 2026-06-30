@@ -9,7 +9,7 @@ echo "Applying Constraints"
 echo "----------------------------------------------------------------"
 
 set CLK_PORT_NAME "clk"
-set CLK_PERIOD 10.0
+set CLK_PERIOD $env(period)
 set period [string map {. p} $CLK_PERIOD]
 set DELAY [expr $CLK_PERIOD * 0.20]
 

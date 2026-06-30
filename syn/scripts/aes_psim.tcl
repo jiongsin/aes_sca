@@ -44,7 +44,7 @@ if {$DESIGN eq "aes_ahb_lite_dma"} {
 }
 set_propagated_clock [all_clocks]
 
-read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}_func_slow_max.sdf
+read_sdf ./results/${DESIGN_VER}/${DESIGN_VER}.sdf
 
 set_app_var power_analysis_mode time_based
 
