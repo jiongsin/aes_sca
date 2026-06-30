@@ -9,36 +9,36 @@
 module aes_operation_tb;
     import aes_operation_pkg::*;
 
-    `ifdef AES_256
-        parameter MODE = 256;
-        `define MODE 256
-    `elsif AES_192
-        parameter MODE = 192;
-        `define MODE 192
-    `else
-        parameter MODE = 128;
-        `define MODE 128
-    `endif
+`ifdef AES_256
+    parameter MODE = 256;
+    `define MODE 256
+`elsif AES_192
+    parameter MODE = 192;
+    `define MODE 192
+`else
+    parameter MODE = 128;
+    `define MODE 128
+`endif
 
-    `ifdef AES_BASE
-        `define VER base
-    `elsif AES_OPT
-        `define VER opt
-    `elsif AES_SCA
-        `define VER sca
-    `endif
+`ifdef AES_BASE
+    `define VER base
+`elsif AES_SCA
+    `define VER sca
+`else
+    `define VER base
+`endif
 
     bit clk;
     bit rst_n;
-
     int test_count;
 
     always #5ns clk = ~clk;
 
     aes_operation_if#(MODE) intf(clk);
+
     assign intf.rst_n = rst_n;
 
-    `ifdef AES_SCA
+`ifdef AES_SCA
     logic [143:0] rand_bits_local;
 
     always @(posedge clk) begin
@@ -49,13 +49,13 @@ module aes_operation_tb;
             intf.drv_cb.random_bits <= rand_bits_local;
         end
     end
-    `endif
+`endif
 
-    `ifdef GLS_SIM
+`ifdef GLS_SIM
         `define DUT_TARGET aes_operation_```VER``_MODE```MODE
-    `else
+`else
         `define DUT_TARGET aes_operation_```VER``#(```MODE)
-    `endif
+`endif
 
     `DUT_TARGET dut (
         .clk         (intf.clk),

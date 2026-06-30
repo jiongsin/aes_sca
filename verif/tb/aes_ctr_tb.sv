@@ -22,8 +22,6 @@ module aes_ctr_tb;
 
 `ifdef AES_BASE
     `define VER base
-`elsif AES_OPT
-    `define VER opt
 `elsif AES_SCA
     `define VER sca
 `else
