@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-# TVLA analysis script for AES PrimePower trace outputs.
-# Reads random and fixed power traces, resamples complete encryption windows, computes Welch t-statistics, reports leakage pass/fail status, and saves the TVLA plot.
+# TVLA analysis script for AES operation PrimePower traces.
+# Reads random and fixed trace files, resamples complete encryption windows, computes Welch t-statistics, reports leakage pass/fail status, and saves the TVLA plot.
 
+import atexit
 import concurrent.futures
 import math
 import os
@@ -16,6 +17,40 @@ from scipy.interpolate import interp1d
 
 DEFAULT_TIME_RESOLUTION_PS = 100.0
 TVLA_THRESHOLD = 4.5
+
+class Tee:
+    """Write stdout/stderr to both the terminal and a log file."""
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for stream in self.streams:
+            stream.write(data)
+        return len(data)
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+def enable_log_file(log_filename: str) -> None:
+    """Mirror all subsequent stdout/stderr output into log_filename."""
+    log_file = open(log_filename, "w", buffering=1)
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+
+    sys.stdout = Tee(original_stdout, log_file)
+    sys.stderr = Tee(original_stderr, log_file)
+
+    def cleanup():
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            log_file.close()
+
+    atexit.register(cleanup)
 
 def require_env(name: str) -> str:
     value = os.environ.get(name)
@@ -352,6 +387,18 @@ def perform_tvla():
     common_time_axis_ps = np.arange(0, encryption_duration_ps, resample_dt_ps)
 
     result_root = os.path.join(workarea, flow, "results", design_ver)
+    base_output = os.path.join(result_root, f"{design_ver}_{flow}_tvla_analysis")
+    output_filename = f"{base_output}.png"
+    log_filename = f"{base_output}.log"
+    counter = 1
+    while os.path.exists(output_filename) or os.path.exists(log_filename):
+        output_filename = f"{base_output}_{counter}.png"
+        log_filename = f"{base_output}_{counter}.log"
+        counter += 1
+
+    enable_log_file(log_filename)
+    print(f"Log file               : {log_filename}")
+
     dynamic_file = os.path.join(result_root, "tvla_dynamic", "tvla_traces.out")
     static_file = os.path.join(result_root, "tvla_static", "tvla_traces.out")
 
@@ -437,12 +484,6 @@ def perform_tvla():
     )
 
     time_axis_ns = common_time_axis_ps / 1000.0
-    base_output = os.path.join(result_root, f"{design_ver}_{flow}_tvla_analysis")
-    output_filename = f"{base_output}.png"
-    counter = 1
-    while os.path.exists(output_filename):
-        output_filename = f"{base_output}_{counter}.png"
-        counter += 1
 
     plt.figure(figsize=(10, 6))
     plt.plot(time_axis_ns, t_stats, label="t value", linewidth=0.5)
